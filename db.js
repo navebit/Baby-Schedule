@@ -180,16 +180,6 @@ function initDb() {
     console.log(`Super-admin user created: ${adminUsername} / ${adminPassword}`);
   }
 
-  // Repair: if super_admin has no group_id but a group exists, assign them to the first group
-  const superAdmin = database.prepare("SELECT id, group_id FROM users WHERE role = 'super_admin' LIMIT 1").get();
-  if (superAdmin && !superAdmin.group_id) {
-    const firstGroup = database.prepare("SELECT id FROM groups ORDER BY id LIMIT 1").get();
-    if (firstGroup) {
-      database.prepare("UPDATE users SET group_id = ? WHERE id = ?").run(firstGroup.id, superAdmin.id);
-      console.log(`Restored super_admin group_id to group ${firstGroup.id}`);
-    }
-  }
-
   return database;
 }
 
@@ -252,13 +242,13 @@ function getPendingUsers() {
 
 function getUsersByGroup(groupId) {
   return getDb().prepare(
-    "SELECT id, username, email, role, status, group_id, created_at FROM users WHERE group_id = ? ORDER BY created_at DESC"
+    "SELECT id, username, email, role, status, group_id, created_at FROM users WHERE group_id = ? AND role != 'super_admin' ORDER BY created_at DESC"
   ).all(groupId);
 }
 
 function getPendingUsersByGroup(groupId) {
   return getDb().prepare(
-    "SELECT id, username, email, role, status, group_id, created_at FROM users WHERE group_id = ? AND status = 'pending' ORDER BY created_at DESC"
+    "SELECT id, username, email, role, status, group_id, created_at FROM users WHERE group_id = ? AND status = 'pending' AND role != 'super_admin' ORDER BY created_at DESC"
   ).all(groupId);
 }
 

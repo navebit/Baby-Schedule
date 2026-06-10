@@ -739,7 +739,7 @@ async function loadAdminUsers() {
 function userCardHTML(u) {
   const isSelf = u.id === state.user.id;
   let actions = '';
-  if (!isSelf) {
+  if (!isSelf && u.role !== 'super_admin') {
     if (u.status === 'pending') {
       actions = `
         <button class="btn btn-sm btn-primary" onclick="approveUser(${u.id})">Approve</button>
