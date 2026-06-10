@@ -1,15 +1,114 @@
 const express = require('express');
 const db = require('../db');
-const { requireAdmin } = require('../middleware/auth');
+const { requireAdmin, requireSuperAdmin } = require('../middleware/auth');
 const router = express.Router();
 
-// All routes require admin
+// All routes require at least admin (super_admin or group_admin)
 router.use(requireAdmin);
 
-// GET /api/admin/users - list all users
+// ===== SUPER-ADMIN: Group management =====
+
+// GET /api/admin/groups - list all groups (super_admin only)
+router.get('/groups', requireSuperAdmin, (req, res) => {
+  try {
+    const groups = db.getAllGroups();
+    res.json(groups);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/admin/groups/pending - list pending groups (super_admin only)
+router.get('/groups/pending', requireSuperAdmin, (req, res) => {
+  try {
+    const groups = db.getPendingGroups();
+    res.json(groups);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// PUT /api/admin/groups/:id/status - approve or reject a group (super_admin only)
+router.put('/groups/:id/status', requireSuperAdmin, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    if (!['pending', 'approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    db.updateGroupStatus(parseInt(id), status);
+
+    // When approving a group, also approve the group_admin user
+    if (status === 'approved') {
+      const group = db.getGroupById(parseInt(id));
+      if (group) {
+        const users = db.getUsersByGroup(parseInt(id));
+        for (const u of users) {
+          if (u.role === 'group_admin' && u.status === 'pending') {
+            db.updateUserStatus(u.id, 'approved');
+          }
+        }
+      }
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/admin/groups/:id/approve (convenience alias)
+router.post('/groups/:id/approve', requireSuperAdmin, (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    db.updateGroupStatus(id, 'approved');
+    const users = db.getUsersByGroup(id);
+    for (const u of users) {
+      if (u.role === 'group_admin' && u.status === 'pending') {
+        db.updateUserStatus(u.id, 'approved');
+        if (req.app.get('io')) req.app.get('io').emit('user:statusChanged', { userId: u.id, status: 'approved' });
+      }
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/admin/groups/:id/reject (convenience alias)
+router.post('/groups/:id/reject', requireSuperAdmin, (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    db.updateGroupStatus(id, 'rejected');
+    const users = db.getUsersByGroup(id);
+    for (const u of users) {
+      if (u.role === 'group_admin') {
+        db.updateUserStatus(u.id, 'rejected');
+        if (req.app.get('io')) req.app.get('io').emit('user:statusChanged', { userId: u.id, status: 'rejected' });
+      }
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ===== GROUP-ADMIN: User management within their own group =====
+
+// GET /api/admin/users - list users in group (group_admin sees own group; super_admin sees all)
 router.get('/users', (req, res) => {
   try {
-    const users = db.getAllUsers();
+    let users;
+    if (req.session.userRole === 'super_admin') {
+      users = db.getAllUsers();
+    } else {
+      users = db.getUsersByGroup(req.session.groupId);
+    }
     res.json(users);
   } catch (err) {
     console.error(err);
@@ -17,10 +116,15 @@ router.get('/users', (req, res) => {
   }
 });
 
-// GET /api/admin/users/pending
+// GET /api/admin/users/pending - list pending users
 router.get('/users/pending', (req, res) => {
   try {
-    const users = db.getPendingUsers();
+    let users;
+    if (req.session.userRole === 'super_admin') {
+      users = db.getPendingUsers();
+    } else {
+      users = db.getPendingUsersByGroup(req.session.groupId);
+    }
     res.json(users);
   } catch (err) {
     console.error(err);
@@ -36,15 +140,22 @@ router.put('/users/:id/status', (req, res) => {
     if (!['pending', 'approved', 'rejected'].includes(status)) {
       return res.status(400).json({ error: 'Invalid status' });
     }
-    // Prevent admin from changing their own status
     if (parseInt(id) === req.session.userId) {
       return res.status(400).json({ error: 'Cannot change your own status' });
     }
+
+    // group_admin can only modify users in their own group
+    if (req.session.userRole === 'group_admin') {
+      const target = db.getUserById(parseInt(id));
+      if (!target || target.group_id !== req.session.groupId) {
+        return res.status(403).json({ error: 'Cannot modify users outside your group' });
+      }
+    }
+
     db.updateUserStatus(parseInt(id), status);
 
-    // Emit socket event if io is available
     if (req.app.get('io')) {
-      req.app.get('io').emit('user:statusChanged', { userId: parseInt(id), status });
+      req.app.get('io').to(`group:${req.session.groupId || 'super'}`).emit('user:statusChanged', { userId: parseInt(id), status });
     }
 
     res.json({ success: true });
@@ -59,12 +170,26 @@ router.put('/users/:id/role', (req, res) => {
   try {
     const { id } = req.params;
     const { role } = req.body;
-    if (!['admin', 'caregiver'].includes(role)) {
-      return res.status(400).json({ error: 'Invalid role' });
-    }
     if (parseInt(id) === req.session.userId) {
       return res.status(400).json({ error: 'Cannot change your own role' });
     }
+
+    // group_admin can only assign caregiver or group_admin within their group
+    if (req.session.userRole === 'group_admin') {
+      if (!['caregiver', 'group_admin'].includes(role)) {
+        return res.status(400).json({ error: 'Invalid role' });
+      }
+      const target = db.getUserById(parseInt(id));
+      if (!target || target.group_id !== req.session.groupId) {
+        return res.status(403).json({ error: 'Cannot modify users outside your group' });
+      }
+    } else {
+      // super_admin can assign any valid role
+      if (!['super_admin', 'group_admin', 'caregiver'].includes(role)) {
+        return res.status(400).json({ error: 'Invalid role' });
+      }
+    }
+
     db.updateUserRole(parseInt(id), role);
     res.json({ success: true });
   } catch (err) {
@@ -80,6 +205,15 @@ router.delete('/users/:id', (req, res) => {
     if (parseInt(id) === req.session.userId) {
       return res.status(400).json({ error: 'Cannot delete yourself' });
     }
+
+    // group_admin can only delete users in their own group
+    if (req.session.userRole === 'group_admin') {
+      const target = db.getUserById(parseInt(id));
+      if (!target || target.group_id !== req.session.groupId) {
+        return res.status(403).json({ error: 'Cannot delete users outside your group' });
+      }
+    }
+
     db.deleteUser(parseInt(id));
     res.json({ success: true });
   } catch (err) {

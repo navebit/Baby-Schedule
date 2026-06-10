@@ -612,39 +612,36 @@ async function loadAdminUsers() {
   try {
     const users = await api('GET', '/api/admin/users');
     const pending = users.filter(u => u.status === 'pending');
-    const all = users;
 
     const pendingEl = document.getElementById('pendingUsers');
     const allEl = document.getElementById('allUsers');
 
-    if (!pending.length) {
-      pendingEl.innerHTML = '<div class="user-actions-empty">No pending requests</div>';
-    } else {
-      pendingEl.innerHTML = pending.map(u => userCardHTML(u, true)).join('');
-    }
+    pendingEl.innerHTML = pending.length
+      ? pending.map(u => userCardHTML(u)).join('')
+      : '<div class="user-actions-empty">No pending requests</div>';
 
-    allEl.innerHTML = all.map(u => userCardHTML(u, false)).join('');
+    allEl.innerHTML = users.map(u => userCardHTML(u)).join('');
   } catch (err) {
     console.error('Failed to load users', err);
   }
 }
 
-function userCardHTML(u, compact) {
+function userCardHTML(u) {
   const isSelf = u.id === state.user.id;
   let actions = '';
   if (!isSelf) {
     if (u.status === 'pending') {
       actions = `
-        <button class="btn btn-sm btn-primary" onclick="setUserStatus(${u.id}, 'approved')">Approve</button>
-        <button class="btn btn-sm btn-danger" onclick="setUserStatus(${u.id}, 'rejected')">Reject</button>`;
+        <button class="btn btn-sm btn-primary" onclick="approveUser(${u.id})">Approve</button>
+        <button class="btn btn-sm btn-danger" onclick="rejectUser(${u.id})">Reject</button>`;
     } else if (u.status === 'approved') {
       actions = `
-        <button class="btn btn-sm btn-secondary" onclick="setUserStatus(${u.id}, 'rejected')">Revoke</button>
+        <button class="btn btn-sm btn-secondary" onclick="rejectUser(${u.id})">Revoke</button>
         ${u.role === 'caregiver' ? `<button class="btn btn-sm btn-secondary" onclick="setUserRole(${u.id}, 'group_admin')">Make Admin</button>` : `<button class="btn btn-sm btn-secondary" onclick="setUserRole(${u.id}, 'caregiver')">Remove Admin</button>`}
         <button class="btn btn-sm btn-danger" onclick="deleteUser(${u.id})">Delete</button>`;
     } else {
       actions = `
-        <button class="btn btn-sm btn-primary" onclick="setUserStatus(${u.id}, 'approved')">Re-approve</button>
+        <button class="btn btn-sm btn-primary" onclick="approveUser(${u.id})">Re-approve</button>
         <button class="btn btn-sm btn-danger" onclick="deleteUser(${u.id})">Delete</button>`;
     }
   }
@@ -661,9 +658,16 @@ function userCardHTML(u, compact) {
   </div>`;
 }
 
-async function setUserStatus(id, status) {
+async function approveUser(id) {
   try {
-    await api('PUT', `/api/admin/users/${id}/status`, { status });
+    await api('POST', `/api/admin/users/${id}/approve`);
+    loadAdminUsers();
+  } catch (err) { alert(err.message); }
+}
+
+async function rejectUser(id) {
+  try {
+    await api('POST', `/api/admin/users/${id}/reject`);
     loadAdminUsers();
   } catch (err) { alert(err.message); }
 }

@@ -18,20 +18,44 @@ function getDb() {
 function initDb() {
   const database = getDb();
 
+  // Create groups table
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS groups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      baby_name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+
+  // Create users table with new schema (role supports super_admin, group_admin, caregiver)
   database.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT NOT NULL UNIQUE,
       email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'caregiver' CHECK(role IN ('admin', 'caregiver')),
+      role TEXT NOT NULL DEFAULT 'caregiver' CHECK(role IN ('super_admin', 'group_admin', 'caregiver', 'admin')),
       status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected')),
+      group_id INTEGER REFERENCES groups(id),
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+  `);
 
+  // Migrations: add group_id to users if missing
+  try {
+    database.exec('ALTER TABLE users ADD COLUMN group_id INTEGER REFERENCES groups(id)');
+  } catch (_) { /* column already exists */ }
+
+  // Migrate role check: SQLite doesn't support altering constraints, so we rely on app-level validation
+
+  // Create entry tables with group_id
+  database.exec(`
     CREATE TABLE IF NOT EXISTS sleep_entries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
       type TEXT NOT NULL CHECK(type IN ('morning_wake', 'nap1', 'nap2', 'nap3', 'nap4', 'night_sleep')),
       start_time TEXT NOT NULL,
       end_time TEXT,
@@ -43,6 +67,7 @@ function initDb() {
     CREATE TABLE IF NOT EXISTS feeding_entries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
       amount REAL NOT NULL,
       unit TEXT NOT NULL DEFAULT 'ml' CHECK(unit IN ('ml', 'oz')),
       time TEXT NOT NULL,
@@ -54,6 +79,7 @@ function initDb() {
     CREATE TABLE IF NOT EXISTS diaper_entries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
       type TEXT NOT NULL CHECK(type IN ('wet', 'dirty', 'both')),
       time TEXT NOT NULL,
       notes TEXT,
@@ -64,6 +90,7 @@ function initDb() {
     CREATE TABLE IF NOT EXISTS medication_entries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       dosage TEXT NOT NULL,
       time_administered TEXT NOT NULL,
@@ -74,24 +101,94 @@ function initDb() {
     );
   `);
 
-  // Create admin user if not exists
+  // Migrations: add group_id to entry tables if missing
+  for (const table of ['sleep_entries', 'feeding_entries', 'diaper_entries', 'medication_entries']) {
+    try {
+      database.exec(`ALTER TABLE ${table} ADD COLUMN group_id INTEGER REFERENCES groups(id) ON DELETE CASCADE`);
+    } catch (_) { /* column already exists */ }
+  }
+
+  // Migration: ensure a default group exists for any legacy users without group_id
+  const ungroupedUsers = database.prepare(
+    "SELECT id FROM users WHERE group_id IS NULL AND role != 'super_admin'"
+  ).all();
+
+  if (ungroupedUsers.length > 0) {
+    let defaultGroup = database.prepare("SELECT id FROM groups WHERE name = 'Default Group'").get();
+    if (!defaultGroup) {
+      const res = database.prepare(
+        "INSERT INTO groups (name, baby_name, status) VALUES ('Default Group', 'Baby', 'approved')"
+      ).run();
+      defaultGroup = { id: res.lastInsertRowid };
+    }
+    for (const u of ungroupedUsers) {
+      database.prepare("UPDATE users SET group_id = ? WHERE id = ?").run(defaultGroup.id, u.id);
+    }
+    // Update existing entries with no group_id
+    for (const table of ['sleep_entries', 'feeding_entries', 'diaper_entries', 'medication_entries']) {
+      database.prepare(`UPDATE ${table} SET group_id = ? WHERE group_id IS NULL`).run(defaultGroup.id);
+    }
+  }
+
+  // Migrate existing 'admin' role users to 'group_admin'
+  try {
+    database.prepare("UPDATE users SET role = 'group_admin' WHERE role = 'admin'").run();
+  } catch (_) { /* ignore */ }
+
+  // Create super-admin user if not exists
   const adminUsername = process.env.ADMIN_USERNAME || 'admin';
   const adminEmail = process.env.ADMIN_EMAIL || 'admin@babyscheduler.local';
   const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
 
-  const existing = database.prepare('SELECT id FROM users WHERE role = ?').get('admin');
+  const existing = database.prepare("SELECT id FROM users WHERE role = 'super_admin'").get();
   if (!existing) {
     const hash = bcrypt.hashSync(adminPassword, 10);
     database.prepare(
-      'INSERT INTO users (username, email, password_hash, role, status) VALUES (?, ?, ?, ?, ?)'
-    ).run(adminUsername, adminEmail, hash, 'admin', 'approved');
-    console.log(`Admin user created: ${adminUsername} / ${adminPassword}`);
+      'INSERT INTO users (username, email, password_hash, role, status, group_id) VALUES (?, ?, ?, ?, ?, NULL)'
+    ).run(adminUsername, adminEmail, hash, 'super_admin', 'approved');
+    console.log(`Super-admin user created: ${adminUsername} / ${adminPassword}`);
   }
 
   return database;
 }
 
-// Users
+// ===== GROUPS =====
+
+function createGroup(name, babyName) {
+  return getDb().prepare(
+    "INSERT INTO groups (name, baby_name, status) VALUES (?, ?, 'pending')"
+  ).run(name, babyName);
+}
+
+function getGroupById(id) {
+  return getDb().prepare('SELECT * FROM groups WHERE id = ?').get(id);
+}
+
+function getAllGroups() {
+  return getDb().prepare(`
+    SELECT g.*, u.username as admin_username, u.email as admin_email, u.id as admin_user_id
+    FROM groups g
+    LEFT JOIN users u ON u.group_id = g.id AND u.role = 'group_admin'
+    ORDER BY g.created_at DESC
+  `).all();
+}
+
+function getPendingGroups() {
+  return getDb().prepare(`
+    SELECT g.*, u.username as admin_username, u.email as admin_email, u.id as admin_user_id
+    FROM groups g
+    LEFT JOIN users u ON u.group_id = g.id AND u.role = 'group_admin'
+    WHERE g.status = 'pending'
+    ORDER BY g.created_at DESC
+  `).all();
+}
+
+function updateGroupStatus(id, status) {
+  return getDb().prepare('UPDATE groups SET status = ? WHERE id = ?').run(status, id);
+}
+
+// ===== USERS =====
+
 function getUserById(id) {
   return getDb().prepare('SELECT * FROM users WHERE id = ?').get(id);
 }
@@ -105,17 +202,29 @@ function getUserByEmail(email) {
 }
 
 function getAllUsers() {
-  return getDb().prepare('SELECT id, username, email, role, status, created_at FROM users ORDER BY created_at DESC').all();
+  return getDb().prepare('SELECT id, username, email, role, status, group_id, created_at FROM users ORDER BY created_at DESC').all();
 }
 
 function getPendingUsers() {
-  return getDb().prepare('SELECT id, username, email, role, status, created_at FROM users WHERE status = ?').all('pending');
+  return getDb().prepare("SELECT id, username, email, role, status, group_id, created_at FROM users WHERE status = 'pending'").all();
 }
 
-function createUser(username, email, passwordHash) {
+function getUsersByGroup(groupId) {
   return getDb().prepare(
-    'INSERT INTO users (username, email, password_hash, role, status) VALUES (?, ?, ?, ?, ?)'
-  ).run(username, email, passwordHash, 'caregiver', 'pending');
+    "SELECT id, username, email, role, status, group_id, created_at FROM users WHERE group_id = ? ORDER BY created_at DESC"
+  ).all(groupId);
+}
+
+function getPendingUsersByGroup(groupId) {
+  return getDb().prepare(
+    "SELECT id, username, email, role, status, group_id, created_at FROM users WHERE group_id = ? AND status = 'pending' ORDER BY created_at DESC"
+  ).all(groupId);
+}
+
+function createUser(username, email, passwordHash, role, groupId) {
+  return getDb().prepare(
+    'INSERT INTO users (username, email, password_hash, role, status, group_id) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(username, email, passwordHash, role || 'caregiver', 'pending', groupId || null);
 }
 
 function updateUserStatus(id, status) {
@@ -130,144 +239,169 @@ function deleteUser(id) {
   return getDb().prepare('DELETE FROM users WHERE id = ?').run(id);
 }
 
-// Sleep entries
-function getSleepEntriesByDate(date) {
+// ===== SLEEP ENTRIES =====
+
+function getSleepEntriesByDate(date, groupId) {
   return getDb().prepare(`
     SELECT s.*, u.username FROM sleep_entries s
     JOIN users u ON s.user_id = u.id
-    WHERE s.date = ? ORDER BY s.start_time ASC
-  `).all(date);
+    WHERE s.date = ? AND s.group_id = ? ORDER BY s.start_time ASC
+  `).all(date, groupId);
 }
 
-function createSleepEntry(userId, type, startTime, endTime, notes, date) {
+function createSleepEntry(userId, groupId, type, startTime, endTime, notes, date) {
   return getDb().prepare(
-    'INSERT INTO sleep_entries (user_id, type, start_time, end_time, notes, date) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(userId, type, startTime, endTime || null, notes || null, date);
+    'INSERT INTO sleep_entries (user_id, group_id, type, start_time, end_time, notes, date) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(userId, groupId, type, startTime, endTime || null, notes || null, date);
 }
 
-function updateSleepEntry(id, userId, type, startTime, endTime, notes) {
-  return getDb().prepare(
-    'UPDATE sleep_entries SET type = ?, start_time = ?, end_time = ?, notes = ? WHERE id = ? AND user_id = ?'
-  ).run(type, startTime, endTime || null, notes || null, id, userId);
-}
-
-function deleteSleepEntry(id, userId, isAdmin) {
-  if (isAdmin) {
-    return getDb().prepare('DELETE FROM sleep_entries WHERE id = ?').run(id);
+function updateSleepEntry(id, userId, groupId, type, startTime, endTime, notes, isPrivileged) {
+  if (isPrivileged) {
+    return getDb().prepare(
+      'UPDATE sleep_entries SET type = ?, start_time = ?, end_time = ?, notes = ? WHERE id = ? AND group_id = ?'
+    ).run(type, startTime, endTime || null, notes || null, id, groupId);
   }
-  return getDb().prepare('DELETE FROM sleep_entries WHERE id = ? AND user_id = ?').run(id, userId);
+  return getDb().prepare(
+    'UPDATE sleep_entries SET type = ?, start_time = ?, end_time = ?, notes = ? WHERE id = ? AND user_id = ? AND group_id = ?'
+  ).run(type, startTime, endTime || null, notes || null, id, userId, groupId);
 }
 
-// Feeding entries
-function getFeedingEntriesByDate(date) {
+function deleteSleepEntry(id, userId, groupId, isPrivileged) {
+  if (isPrivileged) {
+    return getDb().prepare('DELETE FROM sleep_entries WHERE id = ? AND group_id = ?').run(id, groupId);
+  }
+  return getDb().prepare('DELETE FROM sleep_entries WHERE id = ? AND user_id = ? AND group_id = ?').run(id, userId, groupId);
+}
+
+// ===== FEEDING ENTRIES =====
+
+function getFeedingEntriesByDate(date, groupId) {
   return getDb().prepare(`
     SELECT f.*, u.username FROM feeding_entries f
     JOIN users u ON f.user_id = u.id
-    WHERE f.date = ? ORDER BY f.time ASC
-  `).all(date);
+    WHERE f.date = ? AND f.group_id = ? ORDER BY f.time ASC
+  `).all(date, groupId);
 }
 
-function createFeedingEntry(userId, amount, unit, time, notes, date) {
+function createFeedingEntry(userId, groupId, amount, unit, time, notes, date) {
   return getDb().prepare(
-    'INSERT INTO feeding_entries (user_id, amount, unit, time, notes, date) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(userId, amount, unit, time, notes || null, date);
+    'INSERT INTO feeding_entries (user_id, group_id, amount, unit, time, notes, date) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(userId, groupId, amount, unit, time, notes || null, date);
 }
 
-function updateFeedingEntry(id, userId, amount, unit, time, notes) {
-  return getDb().prepare(
-    'UPDATE feeding_entries SET amount = ?, unit = ?, time = ?, notes = ? WHERE id = ? AND user_id = ?'
-  ).run(amount, unit, time, notes || null, id, userId);
-}
-
-function deleteFeedingEntry(id, userId, isAdmin) {
-  if (isAdmin) {
-    return getDb().prepare('DELETE FROM feeding_entries WHERE id = ?').run(id);
+function updateFeedingEntry(id, userId, groupId, amount, unit, time, notes, isPrivileged) {
+  if (isPrivileged) {
+    return getDb().prepare(
+      'UPDATE feeding_entries SET amount = ?, unit = ?, time = ?, notes = ? WHERE id = ? AND group_id = ?'
+    ).run(amount, unit, time, notes || null, id, groupId);
   }
-  return getDb().prepare('DELETE FROM feeding_entries WHERE id = ? AND user_id = ?').run(id, userId);
+  return getDb().prepare(
+    'UPDATE feeding_entries SET amount = ?, unit = ?, time = ?, notes = ? WHERE id = ? AND user_id = ? AND group_id = ?'
+  ).run(amount, unit, time, notes || null, id, userId, groupId);
 }
 
-// Diaper entries
-function getDiaperEntriesByDate(date) {
+function deleteFeedingEntry(id, userId, groupId, isPrivileged) {
+  if (isPrivileged) {
+    return getDb().prepare('DELETE FROM feeding_entries WHERE id = ? AND group_id = ?').run(id, groupId);
+  }
+  return getDb().prepare('DELETE FROM feeding_entries WHERE id = ? AND user_id = ? AND group_id = ?').run(id, userId, groupId);
+}
+
+// ===== DIAPER ENTRIES =====
+
+function getDiaperEntriesByDate(date, groupId) {
   return getDb().prepare(`
     SELECT d.*, u.username FROM diaper_entries d
     JOIN users u ON d.user_id = u.id
-    WHERE d.date = ? ORDER BY d.time ASC
-  `).all(date);
+    WHERE d.date = ? AND d.group_id = ? ORDER BY d.time ASC
+  `).all(date, groupId);
 }
 
-function createDiaperEntry(userId, type, time, notes, date) {
+function createDiaperEntry(userId, groupId, type, time, notes, date) {
   return getDb().prepare(
-    'INSERT INTO diaper_entries (user_id, type, time, notes, date) VALUES (?, ?, ?, ?, ?)'
-  ).run(userId, type, time, notes || null, date);
+    'INSERT INTO diaper_entries (user_id, group_id, type, time, notes, date) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(userId, groupId, type, time, notes || null, date);
 }
 
-function updateDiaperEntry(id, userId, type, time, notes) {
-  return getDb().prepare(
-    'UPDATE diaper_entries SET type = ?, time = ?, notes = ? WHERE id = ? AND user_id = ?'
-  ).run(type, time, notes || null, id, userId);
-}
-
-function deleteDiaperEntry(id, userId, isAdmin) {
-  if (isAdmin) {
-    return getDb().prepare('DELETE FROM diaper_entries WHERE id = ?').run(id);
+function updateDiaperEntry(id, userId, groupId, type, time, notes, isPrivileged) {
+  if (isPrivileged) {
+    return getDb().prepare(
+      'UPDATE diaper_entries SET type = ?, time = ?, notes = ? WHERE id = ? AND group_id = ?'
+    ).run(type, time, notes || null, id, groupId);
   }
-  return getDb().prepare('DELETE FROM diaper_entries WHERE id = ? AND user_id = ?').run(id, userId);
+  return getDb().prepare(
+    'UPDATE diaper_entries SET type = ?, time = ?, notes = ? WHERE id = ? AND user_id = ? AND group_id = ?'
+  ).run(type, time, notes || null, id, userId, groupId);
 }
 
-// Medication entries
-function getMedicationEntriesByDate(date) {
+function deleteDiaperEntry(id, userId, groupId, isPrivileged) {
+  if (isPrivileged) {
+    return getDb().prepare('DELETE FROM diaper_entries WHERE id = ? AND group_id = ?').run(id, groupId);
+  }
+  return getDb().prepare('DELETE FROM diaper_entries WHERE id = ? AND user_id = ? AND group_id = ?').run(id, userId, groupId);
+}
+
+// ===== MEDICATION ENTRIES =====
+
+function getMedicationEntriesByDate(date, groupId) {
   return getDb().prepare(`
     SELECT m.*, u.username FROM medication_entries m
     JOIN users u ON m.user_id = u.id
-    WHERE m.date = ? ORDER BY m.time_administered ASC
-  `).all(date);
+    WHERE m.date = ? AND m.group_id = ? ORDER BY m.time_administered ASC
+  `).all(date, groupId);
 }
 
-function getRecentMedicationByName(name, since) {
+function getRecentMedicationByName(name, since, groupId) {
   return getDb().prepare(`
     SELECT m.*, u.username FROM medication_entries m
     JOIN users u ON m.user_id = u.id
-    WHERE LOWER(m.name) = LOWER(?) AND m.time_administered >= ?
+    WHERE LOWER(m.name) = LOWER(?) AND m.time_administered >= ? AND m.group_id = ?
     ORDER BY m.time_administered DESC
-  `).all(name, since);
+  `).all(name, since, groupId);
 }
 
-function createMedicationEntry(userId, name, dosage, timeAdministered, nextDoseReminder, notes, date) {
+function createMedicationEntry(userId, groupId, name, dosage, timeAdministered, nextDoseReminder, notes, date) {
   return getDb().prepare(
-    'INSERT INTO medication_entries (user_id, name, dosage, time_administered, next_dose_reminder, notes, date) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(userId, name, dosage, timeAdministered, nextDoseReminder || null, notes || null, date);
+    'INSERT INTO medication_entries (user_id, group_id, name, dosage, time_administered, next_dose_reminder, notes, date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(userId, groupId, name, dosage, timeAdministered, nextDoseReminder || null, notes || null, date);
 }
 
-function updateMedicationEntry(id, userId, name, dosage, timeAdministered, nextDoseReminder, notes) {
-  return getDb().prepare(
-    'UPDATE medication_entries SET name = ?, dosage = ?, time_administered = ?, next_dose_reminder = ?, notes = ? WHERE id = ? AND user_id = ?'
-  ).run(name, dosage, timeAdministered, nextDoseReminder || null, notes || null, id, userId);
-}
-
-function deleteMedicationEntry(id, userId, isAdmin) {
-  if (isAdmin) {
-    return getDb().prepare('DELETE FROM medication_entries WHERE id = ?').run(id);
+function updateMedicationEntry(id, userId, groupId, name, dosage, timeAdministered, nextDoseReminder, notes, isPrivileged) {
+  if (isPrivileged) {
+    return getDb().prepare(
+      'UPDATE medication_entries SET name = ?, dosage = ?, time_administered = ?, next_dose_reminder = ?, notes = ? WHERE id = ? AND group_id = ?'
+    ).run(name, dosage, timeAdministered, nextDoseReminder || null, notes || null, id, groupId);
   }
-  return getDb().prepare('DELETE FROM medication_entries WHERE id = ? AND user_id = ?').run(id, userId);
+  return getDb().prepare(
+    'UPDATE medication_entries SET name = ?, dosage = ?, time_administered = ?, next_dose_reminder = ?, notes = ? WHERE id = ? AND user_id = ? AND group_id = ?'
+  ).run(name, dosage, timeAdministered, nextDoseReminder || null, notes || null, id, userId, groupId);
 }
 
-// Calendar: get dates that have entries within a month
-function getDatesWithEntries(year, month) {
+function deleteMedicationEntry(id, userId, groupId, isPrivileged) {
+  if (isPrivileged) {
+    return getDb().prepare('DELETE FROM medication_entries WHERE id = ? AND group_id = ?').run(id, groupId);
+  }
+  return getDb().prepare('DELETE FROM medication_entries WHERE id = ? AND user_id = ? AND group_id = ?').run(id, userId, groupId);
+}
+
+// ===== CALENDAR =====
+
+function getDatesWithEntries(year, month, groupId) {
   const prefix = `${year}-${String(month).padStart(2, '0')}`;
-  const db = getDb();
+  const database = getDb();
   const dates = new Set();
 
   ['sleep_entries', 'feeding_entries', 'diaper_entries', 'medication_entries'].forEach(table => {
-    const col = table === 'sleep_entries' ? 'date' : 'date';
-    const rows = db.prepare(`SELECT DISTINCT date FROM ${table} WHERE date LIKE ?`).all(`${prefix}%`);
+    const rows = database.prepare(`SELECT DISTINCT date FROM ${table} WHERE date LIKE ? AND group_id = ?`).all(`${prefix}%`, groupId);
     rows.forEach(r => dates.add(r.date));
   });
 
   return Array.from(dates);
 }
 
-// Upcoming medication reminders (next dose within 1 hour from now)
-function getUpcomingMedicationReminders() {
+// ===== MEDICATION REMINDERS =====
+
+function getUpcomingMedicationReminders(groupId) {
   const now = new Date().toISOString();
   const oneHourLater = new Date(Date.now() + 60 * 60 * 1000).toISOString();
   return getDb().prepare(`
@@ -276,22 +410,33 @@ function getUpcomingMedicationReminders() {
     WHERE m.next_dose_reminder IS NOT NULL
       AND m.next_dose_reminder >= ?
       AND m.next_dose_reminder <= ?
+      AND m.group_id = ?
     ORDER BY m.next_dose_reminder ASC
-  `).all(now, oneHourLater);
+  `).all(now, oneHourLater, groupId);
 }
 
 module.exports = {
   initDb,
   getDb,
+  // Groups
+  createGroup,
+  getGroupById,
+  getAllGroups,
+  getPendingGroups,
+  updateGroupStatus,
+  // Users
   getUserById,
   getUserByUsername,
   getUserByEmail,
   getAllUsers,
   getPendingUsers,
+  getUsersByGroup,
+  getPendingUsersByGroup,
   createUser,
   updateUserStatus,
   updateUserRole,
   deleteUser,
+  // Entries
   getSleepEntriesByDate,
   createSleepEntry,
   updateSleepEntry,

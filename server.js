@@ -82,8 +82,16 @@ io.use((socket, next) => {
 });
 
 io.on('connection', (socket) => {
-  const username = socket.request.session.username;
-  console.log(`Socket connected: ${username}`);
+  const session = socket.request.session;
+  const username = session.username;
+  const groupId = session.groupId;
+
+  // Join the group-specific room so events are scoped per family group
+  if (groupId) {
+    socket.join(`group:${groupId}`);
+  }
+
+  console.log(`Socket connected: ${username}${groupId ? ` (group:${groupId})` : ''}`);
 
   socket.on('disconnect', () => {
     console.log(`Socket disconnected: ${username}`);

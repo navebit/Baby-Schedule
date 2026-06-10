@@ -11,7 +11,7 @@
   <nav class="navbar">
     <div class="nav-brand">
       <span class="logo-icon">&#128118;</span>
-      <span>Baby Schedule</span>
+      <span id="navBrandName">Baby Schedule</span>
     </div>
     <div class="nav-tabs">
       <button class="nav-tab active" data-view="today">Today</button>
@@ -89,14 +89,30 @@
     <!-- ADMIN VIEW -->
     <section id="view-admin" class="view hidden">
       <div class="admin-container">
-        <h2>User Management</h2>
-        <div id="pendingSection">
-          <h3>Pending Approval</h3>
-          <div id="pendingUsers" class="user-list"></div>
+        <!-- Super-admin: group management panel -->
+        <div id="superAdminPanel" class="hidden">
+          <h2>Group Management</h2>
+          <div id="pendingGroupsSection">
+            <h3>Pending Groups</h3>
+            <div id="pendingGroups" class="group-list"></div>
+          </div>
+          <div id="allGroupsSection">
+            <h3>All Groups</h3>
+            <div id="allGroups" class="group-list"></div>
+          </div>
         </div>
-        <div id="allUsersSection">
-          <h3>All Users</h3>
-          <div id="allUsers" class="user-list"></div>
+
+        <!-- Group-admin: user management panel -->
+        <div id="groupAdminPanel" class="hidden">
+          <h2>User Management</h2>
+          <div id="pendingSection">
+            <h3>Pending Caregivers</h3>
+            <div id="pendingUsers" class="user-list"></div>
+          </div>
+          <div id="allUsersSection">
+            <h3>All Users</h3>
+            <div id="allUsers" class="user-list"></div>
+          </div>
         </div>
       </div>
     </section>

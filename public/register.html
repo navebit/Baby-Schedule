@@ -11,16 +11,17 @@
     <div class="auth-card">
       <div class="auth-logo">
         <span class="logo-icon">&#128118;</span>
-        <h1>Request Access</h1>
-        <p>Your registration will be reviewed by an admin</p>
+        <h1>Create Your Family Group</h1>
+        <p>Register a new group — pending admin approval</p>
       </div>
       <div id="successMsg" class="alert alert-success hidden">
-        Registration submitted! Please wait for admin approval before logging in.
-        <br><br>
+        Your group registration has been submitted!<br>
+        A super-admin will review and approve your group.<br><br>
         <a href="/login">Back to Login</a>
       </div>
       <form id="registerForm">
         <div id="registerError" class="alert alert-error hidden"></div>
+        <div class="form-section-label">Your Account</div>
         <div class="form-group">
           <label for="username">Username</label>
           <input type="text" id="username" name="username" required autocomplete="username" placeholder="Choose a username">
@@ -36,6 +37,15 @@
         <div class="form-group">
           <label for="confirmPassword">Confirm Password</label>
           <input type="password" id="confirmPassword" name="confirmPassword" required autocomplete="new-password" placeholder="Repeat password">
+        </div>
+        <div class="form-section-label">Your Family Group</div>
+        <div class="form-group">
+          <label for="groupName">Group Name</label>
+          <input type="text" id="groupName" name="groupName" required placeholder="e.g. Smith Family">
+        </div>
+        <div class="form-group">
+          <label for="babyName">Baby's Name</label>
+          <input type="text" id="babyName" name="babyName" required placeholder="e.g. Emma">
         </div>
         <button type="submit" class="btn btn-primary btn-full">Request Access</button>
       </form>
@@ -55,6 +65,8 @@
       const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
       const confirmPassword = document.getElementById('confirmPassword').value;
+      const groupName = document.getElementById('groupName').value.trim();
+      const babyName = document.getElementById('babyName').value.trim();
 
       if (password !== confirmPassword) {
         errorEl.textContent = 'Passwords do not match';
@@ -66,7 +78,7 @@
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, email, password }),
+          body: JSON.stringify({ username, email, password, groupName, babyName }),
         });
         const data = await res.json();
         if (res.ok) {

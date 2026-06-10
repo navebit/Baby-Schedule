@@ -7,14 +7,25 @@ router.use(requireApproved);
 
 function emitEntry(req, event, data) {
   const io = req.app.get('io');
-  if (io) io.emit(event, data);
+  if (io) {
+    const groupId = req.session.groupId;
+    if (groupId) {
+      io.to(`group:${groupId}`).emit(event, data);
+    } else {
+      io.emit(event, data);
+    }
+  }
+}
+
+function isPrivileged(req) {
+  return req.session.userRole === 'super_admin' || req.session.userRole === 'group_admin';
 }
 
 // ============ SLEEP ============
 
 router.get('/sleep', (req, res) => {
   const date = req.query.date || new Date().toISOString().slice(0, 10);
-  res.json(db.getSleepEntriesByDate(date));
+  res.json(db.getSleepEntriesByDate(date, req.session.groupId));
 });
 
 router.post('/sleep', (req, res) => {
@@ -27,7 +38,7 @@ router.post('/sleep', (req, res) => {
     if (!start_time || !date) {
       return res.status(400).json({ error: 'start_time and date are required' });
     }
-    const result = db.createSleepEntry(req.session.userId, type, start_time, end_time, notes, date);
+    const result = db.createSleepEntry(req.session.userId, req.session.groupId, type, start_time, end_time, notes, date);
     const entry = { id: result.lastInsertRowid, user_id: req.session.userId, username: req.session.username, type, start_time, end_time: end_time || null, notes: notes || null, date };
     emitEntry(req, 'entry:created', { entryType: 'sleep', entry });
     res.json(entry);
@@ -40,11 +51,10 @@ router.post('/sleep', (req, res) => {
 router.put('/sleep/:id', (req, res) => {
   try {
     const { type, start_time, end_time, notes } = req.body;
-    const isAdmin = req.session.userRole === 'admin';
-    const result = db.updateSleepEntry(parseInt(req.params.id), isAdmin ? null : req.session.userId, type, start_time, end_time, notes);
+    const privileged = isPrivileged(req);
+    const result = db.updateSleepEntry(parseInt(req.params.id), req.session.userId, req.session.groupId, type, start_time, end_time, notes, privileged);
     if (result.changes === 0) {
-      // Try admin update
-      if (!isAdmin) return res.status(404).json({ error: 'Entry not found or not yours' });
+      return res.status(404).json({ error: 'Entry not found or not yours' });
     }
     const entry = { id: parseInt(req.params.id), type, start_time, end_time: end_time || null, notes: notes || null };
     emitEntry(req, 'entry:updated', { entryType: 'sleep', entry });
@@ -57,8 +67,8 @@ router.put('/sleep/:id', (req, res) => {
 
 router.delete('/sleep/:id', (req, res) => {
   try {
-    const isAdmin = req.session.userRole === 'admin';
-    db.deleteSleepEntry(parseInt(req.params.id), req.session.userId, isAdmin);
+    const privileged = isPrivileged(req);
+    db.deleteSleepEntry(parseInt(req.params.id), req.session.userId, req.session.groupId, privileged);
     emitEntry(req, 'entry:deleted', { entryType: 'sleep', id: parseInt(req.params.id) });
     res.json({ success: true });
   } catch (err) {
@@ -71,7 +81,7 @@ router.delete('/sleep/:id', (req, res) => {
 
 router.get('/feeding', (req, res) => {
   const date = req.query.date || new Date().toISOString().slice(0, 10);
-  res.json(db.getFeedingEntriesByDate(date));
+  res.json(db.getFeedingEntriesByDate(date, req.session.groupId));
 });
 
 router.post('/feeding', (req, res) => {
@@ -81,7 +91,7 @@ router.post('/feeding', (req, res) => {
       return res.status(400).json({ error: 'amount, time and date are required' });
     }
     const validUnit = ['ml', 'oz'].includes(unit) ? unit : 'ml';
-    const result = db.createFeedingEntry(req.session.userId, parseFloat(amount), validUnit, time, notes, date);
+    const result = db.createFeedingEntry(req.session.userId, req.session.groupId, parseFloat(amount), validUnit, time, notes, date);
     const entry = { id: result.lastInsertRowid, user_id: req.session.userId, username: req.session.username, amount: parseFloat(amount), unit: validUnit, time, notes: notes || null, date };
     emitEntry(req, 'entry:created', { entryType: 'feeding', entry });
     res.json(entry);
@@ -94,8 +104,11 @@ router.post('/feeding', (req, res) => {
 router.put('/feeding/:id', (req, res) => {
   try {
     const { amount, unit, time, notes } = req.body;
-    const isAdmin = req.session.userRole === 'admin';
-    db.updateFeedingEntry(parseInt(req.params.id), isAdmin ? null : req.session.userId, parseFloat(amount), unit, time, notes);
+    const privileged = isPrivileged(req);
+    const result = db.updateFeedingEntry(parseInt(req.params.id), req.session.userId, req.session.groupId, parseFloat(amount), unit, time, notes, privileged);
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Entry not found or not yours' });
+    }
     const entry = { id: parseInt(req.params.id), amount: parseFloat(amount), unit, time, notes: notes || null };
     emitEntry(req, 'entry:updated', { entryType: 'feeding', entry });
     res.json({ success: true, entry });
@@ -107,8 +120,8 @@ router.put('/feeding/:id', (req, res) => {
 
 router.delete('/feeding/:id', (req, res) => {
   try {
-    const isAdmin = req.session.userRole === 'admin';
-    db.deleteFeedingEntry(parseInt(req.params.id), req.session.userId, isAdmin);
+    const privileged = isPrivileged(req);
+    db.deleteFeedingEntry(parseInt(req.params.id), req.session.userId, req.session.groupId, privileged);
     emitEntry(req, 'entry:deleted', { entryType: 'feeding', id: parseInt(req.params.id) });
     res.json({ success: true });
   } catch (err) {
@@ -121,7 +134,7 @@ router.delete('/feeding/:id', (req, res) => {
 
 router.get('/diaper', (req, res) => {
   const date = req.query.date || new Date().toISOString().slice(0, 10);
-  res.json(db.getDiaperEntriesByDate(date));
+  res.json(db.getDiaperEntriesByDate(date, req.session.groupId));
 });
 
 router.post('/diaper', (req, res) => {
@@ -130,7 +143,7 @@ router.post('/diaper', (req, res) => {
     if (!['wet', 'dirty', 'both'].includes(type) || !time || !date) {
       return res.status(400).json({ error: 'type, time and date are required' });
     }
-    const result = db.createDiaperEntry(req.session.userId, type, time, notes, date);
+    const result = db.createDiaperEntry(req.session.userId, req.session.groupId, type, time, notes, date);
     const entry = { id: result.lastInsertRowid, user_id: req.session.userId, username: req.session.username, type, time, notes: notes || null, date };
     emitEntry(req, 'entry:created', { entryType: 'diaper', entry });
     res.json(entry);
@@ -143,8 +156,11 @@ router.post('/diaper', (req, res) => {
 router.put('/diaper/:id', (req, res) => {
   try {
     const { type, time, notes } = req.body;
-    const isAdmin = req.session.userRole === 'admin';
-    db.updateDiaperEntry(parseInt(req.params.id), isAdmin ? null : req.session.userId, type, time, notes);
+    const privileged = isPrivileged(req);
+    const result = db.updateDiaperEntry(parseInt(req.params.id), req.session.userId, req.session.groupId, type, time, notes, privileged);
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Entry not found or not yours' });
+    }
     const entry = { id: parseInt(req.params.id), type, time, notes: notes || null };
     emitEntry(req, 'entry:updated', { entryType: 'diaper', entry });
     res.json({ success: true, entry });
@@ -156,8 +172,8 @@ router.put('/diaper/:id', (req, res) => {
 
 router.delete('/diaper/:id', (req, res) => {
   try {
-    const isAdmin = req.session.userRole === 'admin';
-    db.deleteDiaperEntry(parseInt(req.params.id), req.session.userId, isAdmin);
+    const privileged = isPrivileged(req);
+    db.deleteDiaperEntry(parseInt(req.params.id), req.session.userId, req.session.groupId, privileged);
     emitEntry(req, 'entry:deleted', { entryType: 'diaper', id: parseInt(req.params.id) });
     res.json({ success: true });
   } catch (err) {
@@ -170,22 +186,22 @@ router.delete('/diaper/:id', (req, res) => {
 
 router.get('/medication', (req, res) => {
   const date = req.query.date || new Date().toISOString().slice(0, 10);
-  res.json(db.getMedicationEntriesByDate(date));
+  res.json(db.getMedicationEntriesByDate(date, req.session.groupId));
 });
 
 router.get('/medication/reminders', (req, res) => {
-  res.json(db.getUpcomingMedicationReminders());
+  res.json(db.getUpcomingMedicationReminders(req.session.groupId));
 });
 
 // Check for duplicate dose
 router.post('/medication/check-duplicate', (req, res) => {
   try {
-    const { name, next_dose_reminder } = req.body;
+    const { name } = req.body;
     if (!name) return res.json({ duplicate: false });
 
     // Look back 24 hours for same medication
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const recent = db.getRecentMedicationByName(name, since);
+    const recent = db.getRecentMedicationByName(name, since, req.session.groupId);
 
     if (recent.length === 0) return res.json({ duplicate: false });
 
@@ -215,7 +231,7 @@ router.post('/medication', (req, res) => {
     if (!name || !dosage || !time_administered || !date) {
       return res.status(400).json({ error: 'name, dosage, time_administered and date are required' });
     }
-    const result = db.createMedicationEntry(req.session.userId, name, dosage, time_administered, next_dose_reminder, notes, date);
+    const result = db.createMedicationEntry(req.session.userId, req.session.groupId, name, dosage, time_administered, next_dose_reminder, notes, date);
     const entry = { id: result.lastInsertRowid, user_id: req.session.userId, username: req.session.username, name, dosage, time_administered, next_dose_reminder: next_dose_reminder || null, notes: notes || null, date };
     emitEntry(req, 'entry:created', { entryType: 'medication', entry });
     res.json(entry);
@@ -228,8 +244,11 @@ router.post('/medication', (req, res) => {
 router.put('/medication/:id', (req, res) => {
   try {
     const { name, dosage, time_administered, next_dose_reminder, notes } = req.body;
-    const isAdmin = req.session.userRole === 'admin';
-    db.updateMedicationEntry(parseInt(req.params.id), isAdmin ? null : req.session.userId, name, dosage, time_administered, next_dose_reminder, notes);
+    const privileged = isPrivileged(req);
+    const result = db.updateMedicationEntry(parseInt(req.params.id), req.session.userId, req.session.groupId, name, dosage, time_administered, next_dose_reminder, notes, privileged);
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Entry not found or not yours' });
+    }
     const entry = { id: parseInt(req.params.id), name, dosage, time_administered, next_dose_reminder: next_dose_reminder || null, notes: notes || null };
     emitEntry(req, 'entry:updated', { entryType: 'medication', entry });
     res.json({ success: true, entry });
@@ -241,8 +260,8 @@ router.put('/medication/:id', (req, res) => {
 
 router.delete('/medication/:id', (req, res) => {
   try {
-    const isAdmin = req.session.userRole === 'admin';
-    db.deleteMedicationEntry(parseInt(req.params.id), req.session.userId, isAdmin);
+    const privileged = isPrivileged(req);
+    db.deleteMedicationEntry(parseInt(req.params.id), req.session.userId, req.session.groupId, privileged);
     emitEntry(req, 'entry:deleted', { entryType: 'medication', id: parseInt(req.params.id) });
     res.json({ success: true });
   } catch (err) {
@@ -254,10 +273,11 @@ router.delete('/medication/:id', (req, res) => {
 // Get all entries for a date (combined timeline)
 router.get('/all', (req, res) => {
   const date = req.query.date || new Date().toISOString().slice(0, 10);
-  const sleep = db.getSleepEntriesByDate(date).map(e => ({ ...e, entryType: 'sleep', sortTime: e.start_time }));
-  const feeding = db.getFeedingEntriesByDate(date).map(e => ({ ...e, entryType: 'feeding', sortTime: e.time }));
-  const diaper = db.getDiaperEntriesByDate(date).map(e => ({ ...e, entryType: 'diaper', sortTime: e.time }));
-  const medication = db.getMedicationEntriesByDate(date).map(e => ({ ...e, entryType: 'medication', sortTime: e.time_administered }));
+  const groupId = req.session.groupId;
+  const sleep = db.getSleepEntriesByDate(date, groupId).map(e => ({ ...e, entryType: 'sleep', sortTime: e.start_time }));
+  const feeding = db.getFeedingEntriesByDate(date, groupId).map(e => ({ ...e, entryType: 'feeding', sortTime: e.time }));
+  const diaper = db.getDiaperEntriesByDate(date, groupId).map(e => ({ ...e, entryType: 'diaper', sortTime: e.time }));
+  const medication = db.getMedicationEntriesByDate(date, groupId).map(e => ({ ...e, entryType: 'medication', sortTime: e.time_administered }));
 
   const all = [...sleep, ...feeding, ...diaper, ...medication].sort((a, b) => {
     return a.sortTime.localeCompare(b.sortTime);
@@ -269,7 +289,7 @@ router.get('/all', (req, res) => {
 // Calendar: get days with entries in a month
 router.get('/calendar/:year/:month', (req, res) => {
   const { year, month } = req.params;
-  const dates = db.getDatesWithEntries(parseInt(year), parseInt(month));
+  const dates = db.getDatesWithEntries(parseInt(year), parseInt(month), req.session.groupId);
   res.json(dates);
 });
 

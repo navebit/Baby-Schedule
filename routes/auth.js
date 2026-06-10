@@ -29,10 +29,45 @@ router.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    // Super-admin: no group required
+    if (user.role === 'super_admin') {
+      if (user.status !== 'approved') {
+        return res.status(403).json({ error: 'Account not approved' });
+      }
+      req.session.userId = user.id;
+      req.session.username = user.username;
+      req.session.userRole = user.role;
+      req.session.userStatus = user.status;
+      req.session.groupId = null;
+      req.session.groupInfo = null;
+      return res.json({
+        success: true,
+        user: { id: user.id, username: user.username, role: user.role, status: user.status, groupId: null },
+      });
+    }
+
+    // group_admin / caregiver: check group status AND user status
+    if (!user.group_id) {
+      return res.status(403).json({ error: 'No group associated with this account' });
+    }
+
+    const group = db.getGroupById(user.group_id);
+    if (!group) {
+      return res.status(403).json({ error: 'Group not found' });
+    }
+    if (group.status !== 'approved') {
+      return res.status(403).json({ error: 'Your group registration is pending super-admin approval' });
+    }
+    if (user.status !== 'approved') {
+      return res.status(403).json({ error: 'Your account is pending approval' });
+    }
+
     req.session.userId = user.id;
     req.session.username = user.username;
     req.session.userRole = user.role;
     req.session.userStatus = user.status;
+    req.session.groupId = user.group_id;
+    req.session.groupInfo = { id: group.id, name: group.name, babyName: group.baby_name };
 
     res.json({
       success: true,
@@ -41,6 +76,8 @@ router.post('/api/auth/login', async (req, res) => {
         username: user.username,
         role: user.role,
         status: user.status,
+        groupId: user.group_id,
+        groupInfo: req.session.groupInfo,
       },
     });
   } catch (err) {
@@ -50,11 +87,12 @@ router.post('/api/auth/login', async (req, res) => {
 });
 
 // POST /api/auth/register
+// Creates a new group + group_admin user, both pending approval
 router.post('/api/auth/register', async (req, res) => {
   try {
-    const { username, email, password } = req.body;
-    if (!username || !email || !password) {
-      return res.status(400).json({ error: 'Username, email and password required' });
+    const { username, email, password, groupName, babyName } = req.body;
+    if (!username || !email || !password || !groupName || !babyName) {
+      return res.status(400).json({ error: 'Username, email, password, group name, and baby name are required' });
     }
     if (password.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
@@ -70,12 +108,23 @@ router.post('/api/auth/register', async (req, res) => {
       return res.status(409).json({ error: 'Email already registered' });
     }
 
-    const hash = await bcrypt.hash(password, 10);
-    db.createUser(username, email, hash);
+    // Create the group (pending)
+    const groupResult = db.createGroup(groupName.trim(), babyName.trim());
+    const groupId = groupResult.lastInsertRowid;
 
-    res.json({ success: true, message: 'Registration submitted. Awaiting admin approval.' });
+    // Create the group_admin user (pending)
+    const hash = await bcrypt.hash(password, 10);
+    db.createUser(username, email, hash, 'group_admin', groupId);
+
+    res.json({
+      success: true,
+      message: 'Your group registration is pending super-admin approval. You will be able to log in once approved.',
+    });
   } catch (err) {
     console.error('Register error:', err);
+    if (err.message && err.message.includes('UNIQUE constraint failed: groups.name')) {
+      return res.status(409).json({ error: 'A group with that name already exists' });
+    }
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -97,6 +146,8 @@ router.get('/api/auth/me', (req, res) => {
     username: req.session.username,
     role: req.session.userRole,
     status: req.session.userStatus,
+    groupId: req.session.groupId || null,
+    groupInfo: req.session.groupInfo || null,
   });
 });
 
