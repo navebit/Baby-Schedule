@@ -46,6 +46,18 @@ function nowTimeValue() {
   return `${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`;
 }
 
+function calcDuration(startStr, endStr, crossMidnight = false) {
+  try {
+    const toMins = s => { const t = (s || '').slice(11,16) || s; const [h,m] = t.split(':').map(Number); return h * 60 + m; };
+    let start = toMins(startStr), end = toMins(endStr);
+    if (crossMidnight && end <= start) end += 24 * 60; // wake-up next day
+    const diff = end - start;
+    if (diff <= 0 || diff > 24 * 60) return null;
+    const h = Math.floor(diff / 60), m = diff % 60;
+    return h > 0 ? `${h}h ${m > 0 ? m + 'm' : ''}`.trim() : `${m}m`;
+  } catch { return null; }
+}
+
 function sleepTypeLabel(type) {
   const map = { morning_wake: 'Morning Wake-up', nap1: 'Nap 1', nap2: 'Nap 2', nap3: 'Nap 3', nap4: 'Nap 4', night_sleep: 'Night Sleep' };
   return map[type] || type;
@@ -205,8 +217,17 @@ function entryHTML(e) {
   if (e.entryType === 'sleep') {
     title = sleepTypeLabel(e.type);
     time = fmt12(e.start_time.slice(11, 16) || e.start_time);
-    if (e.end_time) meta = `${fmt12(e.start_time.slice(11,16) || e.start_time)} → ${fmt12(e.end_time.slice(11,16) || e.end_time)}`;
-    else meta = `Started ${fmt12(e.start_time.slice(11,16) || e.start_time)}`;
+    if (e.end_time) {
+      const dur = calcDuration(e.start_time, e.end_time);
+      meta = `${fmt12(e.start_time.slice(11,16) || e.start_time)} → ${fmt12(e.end_time.slice(11,16) || e.end_time)}${dur ? ' · ' + dur : ''}`;
+    } else if (e.type === 'morning_wake' && e.prev_night_sleep_time) {
+      const dur = calcDuration(e.prev_night_sleep_time, e.start_time, true);
+      meta = `Wake-up ${fmt12(e.start_time.slice(11,16) || e.start_time)}${dur ? ' · Slept ' + dur : ''}`;
+    } else if (e.type === 'night_sleep') {
+      meta = `Bedtime ${fmt12(e.start_time.slice(11,16) || e.start_time)} · end recorded at morning wake-up`;
+    } else {
+      meta = `Started ${fmt12(e.start_time.slice(11,16) || e.start_time)}`;
+    }
   } else if (e.entryType === 'feeding') {
     title = `${e.amount}${e.unit} feeding`;
     time = fmt12(e.time.slice(11,16) || e.time);

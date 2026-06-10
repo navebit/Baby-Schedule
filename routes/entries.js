@@ -279,6 +279,18 @@ router.get('/all', (req, res) => {
   const diaper = db.getDiaperEntriesByDate(date, groupId).map(e => ({ ...e, entryType: 'diaper', sortTime: e.time }));
   const medication = db.getMedicationEntriesByDate(date, groupId).map(e => ({ ...e, entryType: 'medication', sortTime: e.time_administered }));
 
+  // For morning_wake entries, find the previous night's sleep to calculate duration
+  const morningWake = sleep.find(e => e.type === 'morning_wake');
+  if (morningWake) {
+    const prevDate = new Date(date + 'T12:00:00');
+    prevDate.setDate(prevDate.getDate() - 1);
+    const prevDateStr = prevDate.toISOString().slice(0, 10);
+    const prevSleep = db.getSleepEntriesByDate(prevDateStr, groupId).find(e => e.type === 'night_sleep');
+    if (prevSleep) {
+      morningWake.prev_night_sleep_time = prevSleep.start_time;
+    }
+  }
+
   const all = [...sleep, ...feeding, ...diaper, ...medication].sort((a, b) => {
     return a.sortTime.localeCompare(b.sortTime);
   });
