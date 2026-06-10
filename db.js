@@ -45,56 +45,27 @@ function initDb() {
     );
   `);
 
-  // Migration: clean up users_old artifact left by a previously failed migration
+  // Safe cleanup: drop any leftover users_old from failed past migrations
   try {
-    const tables = database.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(r => r.name);
-    if (tables.includes('users_old')) {
-      // Copy any users not yet in the new users table, then drop users_old
-      database.exec(`
-        INSERT OR IGNORE INTO users (id, username, email, password_hash, role, status, created_at)
-          SELECT id, username, email, password_hash, role, status, created_at FROM users_old;
-        DROP TABLE users_old;
-      `);
-      console.log('Cleaned up users_old artifact');
+    const hasOld = database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='users_old'").get();
+    if (hasOld) {
+      database.prepare("INSERT OR IGNORE INTO users (id,username,email,password_hash,role,status,created_at) SELECT id,username,email,password_hash,role,status,created_at FROM users_old").run();
+      database.prepare("DROP TABLE users_old").run();
+      console.log('Dropped leftover users_old');
     }
-    // Fix role CHECK constraint if still using old values
-    const tableInfo = database.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get();
-    const hasOldConstraint = tableInfo && tableInfo.sql &&
-      tableInfo.sql.includes("'admin', 'caregiver'") &&
-      !tableInfo.sql.includes('super_admin');
-    if (hasOldConstraint) {
-      // Recreate users table without the restrictive CHECK constraint
-      database.exec(`
-        ALTER TABLE users RENAME TO users_old;
-        CREATE TABLE users (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          username TEXT NOT NULL UNIQUE,
-          email TEXT NOT NULL UNIQUE,
-          password_hash TEXT NOT NULL,
-          role TEXT NOT NULL DEFAULT 'caregiver',
-          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected')),
-          group_id INTEGER REFERENCES groups(id),
-          created_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-        INSERT INTO users (id, username, email, password_hash, role, status, created_at)
-          SELECT id, username, email, password_hash, role, status, created_at FROM users_old;
-        DROP TABLE users_old;
-      `);
-      console.log('Migrated users table to remove old role constraint');
-    }
-  } catch (e) { console.error('Users migration error:', e.message); }
+  } catch (e) { console.error('users_old cleanup error:', e.message); }
 
   // Migrations: add group_id to users if missing
   try {
     database.exec('ALTER TABLE users ADD COLUMN group_id INTEGER REFERENCES groups(id)');
   } catch (_) { /* column already exists */ }
 
-  // Create entry tables with group_id
+  // Create entry tables (no FK on user_id to avoid stale references from old migrations)
   database.exec(`
     CREATE TABLE IF NOT EXISTS sleep_entries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL,
+      group_id INTEGER NOT NULL,
       type TEXT NOT NULL CHECK(type IN ('morning_wake', 'nap1', 'nap2', 'nap3', 'nap4', 'night_sleep')),
       start_time TEXT NOT NULL,
       end_time TEXT,
@@ -105,10 +76,10 @@ function initDb() {
 
     CREATE TABLE IF NOT EXISTS feeding_entries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL,
+      group_id INTEGER NOT NULL,
       amount REAL NOT NULL,
-      unit TEXT NOT NULL DEFAULT 'ml' CHECK(unit IN ('ml', 'oz')),
+      unit TEXT NOT NULL DEFAULT 'ml',
       time TEXT NOT NULL,
       notes TEXT,
       date TEXT NOT NULL,
@@ -117,8 +88,8 @@ function initDb() {
 
     CREATE TABLE IF NOT EXISTS diaper_entries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL,
+      group_id INTEGER NOT NULL,
       type TEXT NOT NULL CHECK(type IN ('wet', 'dirty', 'both')),
       time TEXT NOT NULL,
       notes TEXT,
@@ -128,8 +99,8 @@ function initDb() {
 
     CREATE TABLE IF NOT EXISTS medication_entries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL,
+      group_id INTEGER NOT NULL,
       name TEXT NOT NULL,
       dosage TEXT NOT NULL,
       time_administered TEXT NOT NULL,
