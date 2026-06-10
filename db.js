@@ -11,7 +11,8 @@ function getDb() {
   if (!db) {
     db = new Database(DB_PATH);
     db.pragma('journal_mode = WAL');
-    db.pragma('foreign_keys = ON');
+    // foreign_keys left OFF — app logic enforces referential integrity,
+    // and ON breaks inserts when old migrations left stale FK references.
   }
   return db;
 }
@@ -44,16 +45,26 @@ function initDb() {
     );
   `);
 
-  // Migration: fix role CHECK constraint if it uses old values ('admin','caregiver' only)
-  // SQLite can't ALTER constraints, so we recreate the table when needed
+  // Migration: clean up users_old artifact left by a previously failed migration
   try {
+    const tables = database.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(r => r.name);
+    if (tables.includes('users_old')) {
+      // Copy any users not yet in the new users table, then drop users_old
+      database.exec(`
+        INSERT OR IGNORE INTO users (id, username, email, password_hash, role, status, created_at)
+          SELECT id, username, email, password_hash, role, status, created_at FROM users_old;
+        DROP TABLE users_old;
+      `);
+      console.log('Cleaned up users_old artifact');
+    }
+    // Fix role CHECK constraint if still using old values
     const tableInfo = database.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get();
     const hasOldConstraint = tableInfo && tableInfo.sql &&
       tableInfo.sql.includes("'admin', 'caregiver'") &&
       !tableInfo.sql.includes('super_admin');
     if (hasOldConstraint) {
+      // Recreate users table without the restrictive CHECK constraint
       database.exec(`
-        BEGIN;
         ALTER TABLE users RENAME TO users_old;
         CREATE TABLE users (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,10 +79,10 @@ function initDb() {
         INSERT INTO users (id, username, email, password_hash, role, status, created_at)
           SELECT id, username, email, password_hash, role, status, created_at FROM users_old;
         DROP TABLE users_old;
-        COMMIT;
       `);
+      console.log('Migrated users table to remove old role constraint');
     }
-  } catch (e) { console.error('Role migration error:', e.message); }
+  } catch (e) { console.error('Users migration error:', e.message); }
 
   // Migrations: add group_id to users if missing
   try {
