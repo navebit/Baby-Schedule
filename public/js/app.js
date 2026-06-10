@@ -593,13 +593,8 @@ async function createMyGroup() {
   if (!name || !baby_name) return alert('Please fill in both fields');
   try {
     const result = await api('POST', '/api/admin/my-group', { name, baby_name });
-    state.user.groupId = result.groupId;
-    state.user.groupInfo = { id: result.groupId, name: result.name, babyName: result.babyName };
-    document.getElementById('myGroupSetup').classList.add('hidden');
-    document.getElementById('babyNameTitle').textContent = `${result.babyName}'s Schedule`;
-    document.getElementById('babyNameHeader').classList.remove('hidden');
-    document.getElementById('navBrandName').textContent = `${result.babyName}'s Schedule`;
-    loadAdminGroups();
+    // Reload page to get a fresh session with the new groupId
+    window.location.reload();
   } catch (err) { alert(err.message); }
 }
 

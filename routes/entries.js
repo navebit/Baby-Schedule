@@ -44,7 +44,7 @@ router.post('/sleep', (req, res) => {
     res.json(entry);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -61,7 +61,7 @@ router.put('/sleep/:id', (req, res) => {
     res.json({ success: true, entry });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -73,7 +73,7 @@ router.delete('/sleep/:id', (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -97,7 +97,7 @@ router.post('/feeding', (req, res) => {
     res.json(entry);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -114,7 +114,7 @@ router.put('/feeding/:id', (req, res) => {
     res.json({ success: true, entry });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -126,7 +126,7 @@ router.delete('/feeding/:id', (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -149,7 +149,7 @@ router.post('/diaper', (req, res) => {
     res.json(entry);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -166,7 +166,7 @@ router.put('/diaper/:id', (req, res) => {
     res.json({ success: true, entry });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -178,7 +178,7 @@ router.delete('/diaper/:id', (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -221,7 +221,7 @@ router.post('/medication/check-duplicate', (req, res) => {
     res.json({ duplicate: false, lastEntry: latest });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -237,7 +237,7 @@ router.post('/medication', (req, res) => {
     res.json(entry);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -254,7 +254,7 @@ router.put('/medication/:id', (req, res) => {
     res.json({ success: true, entry });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -266,7 +266,7 @@ router.delete('/medication/:id', (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message });
   }
 });
 
