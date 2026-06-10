@@ -260,6 +260,10 @@ function openModal(id) {
   // Set default time to now
   const timeInputs = document.querySelectorAll(`#${id} input[type="time"]`);
   timeInputs.forEach(inp => { if (!inp.value) inp.value = nowTimeValue(); });
+  // Sync conditional fields (e.g. hide end time for morning_wake)
+  if (id === 'sleepModal') {
+    document.getElementById('sleepType').dispatchEvent(new Event('change'));
+  }
 }
 
 function closeModal(id) {
@@ -272,6 +276,10 @@ function closeModal(id) {
     form.querySelectorAll('.alert').forEach(a => a.classList.add('hidden'));
   }
   document.getElementById('dupWarning')?.classList.add('hidden');
+  // Re-sync sleep modal fields after reset
+  if (id === 'sleepModal') {
+    document.getElementById('sleepType').dispatchEvent(new Event('change'));
+  }
 }
 
 // ===== FORMS =====
