@@ -208,6 +208,36 @@ router.put('/users/:id/role', (req, res) => {
   }
 });
 
+// POST /api/admin/users/:id/remove-from-group (super_admin only)
+router.post('/users/:id/remove-from-group', requireSuperAdmin, (req, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    if (userId === req.session.userId) {
+      return res.status(400).json({ error: 'Cannot remove yourself' });
+    }
+    db.getDb().prepare("UPDATE users SET group_id = NULL, role = 'caregiver', status = 'rejected' WHERE id = ?").run(userId);
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// PUT /api/admin/groups/:id/rename (super_admin only)
+router.put('/groups/:id/rename', requireSuperAdmin, (req, res) => {
+  try {
+    const { name, baby_name } = req.body;
+    if (!name && !baby_name) return res.status(400).json({ error: 'Nothing to update' });
+    const id = parseInt(req.params.id);
+    if (name) db.getDb().prepare('UPDATE groups SET name = ? WHERE id = ?').run(name, id);
+    if (baby_name) db.getDb().prepare('UPDATE groups SET baby_name = ? WHERE id = ?').run(baby_name, id);
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // DELETE /api/admin/users/:id
 router.delete('/users/:id', (req, res) => {
   try {

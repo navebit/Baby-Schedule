@@ -597,7 +597,9 @@ function groupCardHTML(g) {
     g.status === 'approved' ? `<button class="btn btn-sm btn-secondary" onclick="rejectGroup(${g.id})">Revoke</button>` :
     `<button class="btn btn-sm btn-primary" onclick="approveGroup(${g.id})">Re-approve</button>`;
 
-  return `<div class="user-card">
+  const escapedName = g.name.replace(/'/g, "\\'");
+  const escapedBaby = g.baby_name.replace(/'/g, "\\'");
+  return `<div class="user-card" id="group-card-${g.id}">
     <div class="user-info">
       <div class="user-name">${g.name}</div>
       <div class="user-email">Baby: <strong>${g.baby_name}</strong></div>
@@ -606,7 +608,16 @@ function groupCardHTML(g) {
     <span class="status-badge ${g.status}">${g.status}</span>
     <div class="user-actions">
       ${actions}
-      <button class="btn btn-sm btn-ghost" onclick="loadGroupUsers(${g.id}, '${g.name.replace(/'/g, "\\'")}')">&#128100; Users</button>
+      <button class="btn btn-sm btn-ghost" onclick="loadGroupUsers(${g.id}, '${escapedName}')">&#128100; Users</button>
+      <button class="btn btn-sm btn-ghost" onclick="toggleRenameForm(${g.id})">&#9998; Rename</button>
+    </div>
+    <div id="rename-form-${g.id}" class="rename-form hidden">
+      <input type="text" id="rename-group-${g.id}" placeholder="Group name" value="${g.name}" class="form-input rename-input">
+      <input type="text" id="rename-baby-${g.id}" placeholder="Baby name" value="${g.baby_name}" class="form-input rename-input">
+      <div class="rename-actions">
+        <button class="btn btn-sm btn-primary" onclick="saveGroupRename(${g.id})">Save</button>
+        <button class="btn btn-sm btn-ghost" onclick="toggleRenameForm(${g.id})">Cancel</button>
+      </div>
     </div>
   </div>`;
 }
@@ -625,7 +636,24 @@ async function rejectGroup(id) {
   } catch (err) { alert(err.message); }
 }
 
+function toggleRenameForm(id) {
+  document.getElementById(`rename-form-${id}`).classList.toggle('hidden');
+}
+
+async function saveGroupRename(id) {
+  const name = document.getElementById(`rename-group-${id}`).value.trim();
+  const baby_name = document.getElementById(`rename-baby-${id}`).value.trim();
+  if (!name || !baby_name) return alert('Both fields are required');
+  try {
+    await api('PUT', `/api/admin/groups/${id}/rename`, { name, baby_name });
+    loadAdminGroups();
+  } catch (err) { alert(err.message); }
+}
+
+let currentGroupId = null;
+
 async function loadGroupUsers(groupId, groupName) {
+  currentGroupId = groupId;
   try {
     const users = await api('GET', `/api/admin/groups/${groupId}/users`);
     document.getElementById('groupUsersTitle').textContent = `${groupName} — Users`;
@@ -636,6 +664,9 @@ async function loadGroupUsers(groupId, groupName) {
             <div class="user-email">${u.email}</div>
             <div class="user-meta">${u.role} &bull; <span class="status-badge ${u.status}">${u.status}</span></div>
           </div>
+          <div class="user-actions">
+            <button class="btn btn-sm btn-danger" onclick="removeUserFromGroup(${u.id})">Remove</button>
+          </div>
         </div>`).join('')
       : '<div class="user-actions-empty">No users in this group</div>';
     document.getElementById('allGroupsSection').classList.add('hidden');
@@ -644,7 +675,16 @@ async function loadGroupUsers(groupId, groupName) {
   } catch (err) { alert(err.message); }
 }
 
+async function removeUserFromGroup(userId) {
+  if (!confirm('Remove this user from the group? They will lose access.')) return;
+  try {
+    await api('POST', `/api/admin/users/${userId}/remove-from-group`);
+    loadGroupUsers(currentGroupId, document.getElementById('groupUsersTitle').textContent.split(' —')[0]);
+  } catch (err) { alert(err.message); }
+}
+
 function closeGroupUsers() {
+  currentGroupId = null;
   document.getElementById('groupUsersPanel').classList.add('hidden');
   document.getElementById('allGroupsSection').classList.remove('hidden');
   document.getElementById('pendingGroupsSection').classList.remove('hidden');

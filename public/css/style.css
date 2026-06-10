@@ -313,3 +313,11 @@ input, select, textarea { font-family: inherit; font-size: 0.95rem; }
   border: 1px solid var(--border); border-radius: var(--radius-sm);
   padding: .5rem .75rem; margin-top: .25rem;
 }
+
+/* ===== RENAME FORM (group cards) ===== */
+.rename-form {
+  width: 100%; margin-top: .75rem; padding-top: .75rem;
+  border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: .5rem;
+}
+.rename-input { font-size: .9rem; }
+.rename-actions { display: flex; gap: .5rem; }
