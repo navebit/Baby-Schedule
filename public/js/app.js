@@ -57,9 +57,10 @@ function diaperLabel(type) {
 }
 
 async function api(method, path, body) {
-  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  const opts = { method, headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
   const res = await fetch(path, opts);
+  if (res.status === 401) { window.location.href = '/login'; return; }
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Request failed');
   return data;
@@ -289,13 +290,18 @@ function setupForms() {
   document.getElementById('diaperForm').addEventListener('submit', submitDiaper);
   document.getElementById('medicationForm').addEventListener('submit', submitMedication);
 
-  // Hide end time for morning wake-up
+  // Hide end time for morning wake-up and night sleep
   document.getElementById('sleepType').addEventListener('change', function () {
     const isMorning = this.value === 'morning_wake';
-    document.getElementById('sleepEndGroup').classList.toggle('hidden', isMorning);
-    document.getElementById('morningWakeNote').classList.toggle('hidden', !isMorning);
-    document.getElementById('sleepStartLabel').textContent = isMorning ? 'Wake-up Time' : 'Start Time';
-    if (isMorning) document.getElementById('sleepEnd').value = '';
+    const isNight = this.value === 'night_sleep';
+    const hideEnd = isMorning || isNight;
+    document.getElementById('sleepEndGroup').classList.toggle('hidden', hideEnd);
+    if (hideEnd) document.getElementById('sleepEnd').value = '';
+    const note = document.getElementById('morningWakeNote');
+    note.classList.toggle('hidden', !hideEnd);
+    if (isMorning) note.textContent = 'Duration is calculated automatically from the previous night sleep entry.';
+    if (isNight) note.textContent = 'End time is recorded as the morning wake-up of the following day.';
+    document.getElementById('sleepStartLabel').textContent = isMorning ? 'Wake-up Time' : isNight ? 'Bedtime' : 'Start Time';
   });
 
   // Duplicate check on medication name blur
