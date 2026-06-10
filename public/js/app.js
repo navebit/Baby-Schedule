@@ -576,12 +576,31 @@ function loadAdminView() {
   if (state.user.role === 'super_admin') {
     document.getElementById('superAdminPanel').classList.remove('hidden');
     document.getElementById('groupAdminPanel').classList.add('hidden');
+    // Show setup form if super_admin has no group yet
+    const noGroup = !state.user.groupId;
+    document.getElementById('myGroupSetup').classList.toggle('hidden', !noGroup);
     loadAdminGroups();
   } else {
     document.getElementById('superAdminPanel').classList.add('hidden');
     document.getElementById('groupAdminPanel').classList.remove('hidden');
     loadAdminUsers();
   }
+}
+
+async function createMyGroup() {
+  const name = document.getElementById('myGroupName').value.trim();
+  const baby_name = document.getElementById('myBabyName').value.trim();
+  if (!name || !baby_name) return alert('Please fill in both fields');
+  try {
+    const result = await api('POST', '/api/admin/my-group', { name, baby_name });
+    state.user.groupId = result.groupId;
+    state.user.groupInfo = { id: result.groupId, name: result.name, babyName: result.babyName };
+    document.getElementById('myGroupSetup').classList.add('hidden');
+    document.getElementById('babyNameTitle').textContent = `${result.babyName}'s Schedule`;
+    document.getElementById('babyNameHeader').classList.remove('hidden');
+    document.getElementById('navBrandName').textContent = `${result.babyName}'s Schedule`;
+    loadAdminGroups();
+  } catch (err) { alert(err.message); }
 }
 
 async function loadAdminGroups() {

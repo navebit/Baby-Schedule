@@ -262,4 +262,23 @@ router.delete('/users/:id', (req, res) => {
   }
 });
 
+// POST /api/admin/my-group — super_admin creates their own group
+router.post('/my-group', requireSuperAdmin, (req, res) => {
+  try {
+    const { name, baby_name } = req.body;
+    if (!name || !baby_name) return res.status(400).json({ error: 'Name and baby name required' });
+    const result = db.createGroup(name, baby_name);
+    const groupId = result.lastInsertRowid;
+    db.updateGroupStatus(groupId, 'approved');
+    db.getDb().prepare("UPDATE users SET group_id = ? WHERE id = ?").run(groupId, req.session.userId);
+    // Update session
+    req.session.groupId = groupId;
+    req.session.groupInfo = { id: groupId, name, babyName: baby_name };
+    res.json({ success: true, groupId, name, babyName: baby_name });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

@@ -98,6 +98,21 @@
         <!-- Super-admin: group management panel -->
         <div id="superAdminPanel" class="hidden">
           <h2>Group Management</h2>
+          <!-- My Group setup (shown when super_admin has no group) -->
+          <div id="myGroupSetup" class="hidden">
+            <div class="alert alert-info">You have no group yet. Set up your baby profile to start logging entries.</div>
+            <div class="form-row" style="margin-top:1rem">
+              <div class="form-group">
+                <label>Group / Family Name</label>
+                <input type="text" id="myGroupName" class="form-input" placeholder="e.g. The Cohen Family">
+              </div>
+              <div class="form-group">
+                <label>Baby's Name</label>
+                <input type="text" id="myBabyName" class="form-input" placeholder="e.g. Noa">
+              </div>
+            </div>
+            <button class="btn btn-primary" onclick="createMyGroup()" style="margin-bottom:2rem">Create My Group</button>
+          </div>
           <div id="pendingGroupsSection">
             <h3>Pending Groups</h3>
             <div id="pendingGroups" class="group-list"></div>
