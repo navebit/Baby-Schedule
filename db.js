@@ -43,12 +43,39 @@ function initDb() {
     );
   `);
 
+  // Migration: fix role CHECK constraint if it uses old values ('admin','caregiver' only)
+  // SQLite can't ALTER constraints, so we recreate the table when needed
+  try {
+    const tableInfo = database.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get();
+    const hasOldConstraint = tableInfo && tableInfo.sql &&
+      tableInfo.sql.includes("'admin', 'caregiver'") &&
+      !tableInfo.sql.includes('super_admin');
+    if (hasOldConstraint) {
+      database.exec(`
+        BEGIN;
+        ALTER TABLE users RENAME TO users_old;
+        CREATE TABLE users (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          username TEXT NOT NULL UNIQUE,
+          email TEXT NOT NULL UNIQUE,
+          password_hash TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'caregiver',
+          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected')),
+          group_id INTEGER REFERENCES groups(id),
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT INTO users (id, username, email, password_hash, role, status, created_at)
+          SELECT id, username, email, password_hash, role, status, created_at FROM users_old;
+        DROP TABLE users_old;
+        COMMIT;
+      `);
+    }
+  } catch (e) { console.error('Role migration error:', e.message); }
+
   // Migrations: add group_id to users if missing
   try {
     database.exec('ALTER TABLE users ADD COLUMN group_id INTEGER REFERENCES groups(id)');
   } catch (_) { /* column already exists */ }
-
-  // Migrate role check: SQLite doesn't support altering constraints, so we rely on app-level validation
 
   // Create entry tables with group_id
   database.exec(`
