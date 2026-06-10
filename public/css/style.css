@@ -289,3 +289,27 @@ input, select, textarea { font-family: inherit; font-size: 0.95rem; }
   .form-row { grid-template-columns: 1fr; }
   .timeline-legend { display: none; }
 }
+
+/* ===== BABY NAME HEADER ===== */
+.baby-name-header {
+  text-align: center;
+  padding: .75rem 1rem .25rem;
+  background: linear-gradient(135deg, var(--sleep) 0%, var(--medication) 100%);
+  color: #fff;
+}
+.baby-name-header .baby-emoji { font-size: 1.5rem; display: block; margin-bottom: .1rem; }
+.baby-name-header h1 { font-size: 1.4rem; font-weight: 700; margin: 0; letter-spacing: .02em; }
+
+/* ===== GROUP USERS PANEL (super-admin) ===== */
+.group-users-header {
+  display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;
+  padding-bottom: .75rem; border-bottom: 1px solid var(--border);
+}
+.group-users-header h3 { margin: 0; }
+
+/* ===== FORM HINT ===== */
+.form-hint {
+  font-size: .8rem; color: var(--text-muted); background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: .5rem .75rem; margin-top: .25rem;
+}

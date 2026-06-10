@@ -80,9 +80,12 @@ async function init() {
 
   document.getElementById('navUsername').textContent = state.user.username;
 
-  // Show baby name in the nav brand if available
+  // Show baby name prominently at the top
   if (state.user.groupInfo && state.user.groupInfo.babyName) {
-    document.getElementById('navBrandName').textContent = `${state.user.groupInfo.babyName}'s Schedule`;
+    const babyName = state.user.groupInfo.babyName;
+    document.getElementById('navBrandName').textContent = `${babyName}'s Schedule`;
+    document.getElementById('babyNameTitle').textContent = `${babyName}'s Schedule`;
+    document.getElementById('babyNameHeader').classList.remove('hidden');
   }
 
   // Show admin tab for group_admin and super_admin
@@ -278,6 +281,15 @@ function setupForms() {
   document.getElementById('diaperForm').addEventListener('submit', submitDiaper);
   document.getElementById('medicationForm').addEventListener('submit', submitMedication);
 
+  // Hide end time for morning wake-up
+  document.getElementById('sleepType').addEventListener('change', function () {
+    const isMorning = this.value === 'morning_wake';
+    document.getElementById('sleepEndGroup').classList.toggle('hidden', isMorning);
+    document.getElementById('morningWakeNote').classList.toggle('hidden', !isMorning);
+    document.getElementById('sleepStartLabel').textContent = isMorning ? 'Wake-up Time' : 'Start Time';
+    if (isMorning) document.getElementById('sleepEnd').value = '';
+  });
+
   // Duplicate check on medication name blur
   document.getElementById('medicationName').addEventListener('blur', checkDuplicate);
 }
@@ -410,6 +422,8 @@ async function openEditModal(type, id) {
     document.getElementById('sleepStart').value = (entry.start_time || '').slice(11, 16) || entry.start_time;
     document.getElementById('sleepEnd').value = entry.end_time ? ((entry.end_time || '').slice(11, 16) || entry.end_time) : '';
     document.getElementById('sleepNotes').value = entry.notes || '';
+    // Trigger visibility toggle for morning_wake
+    document.getElementById('sleepType').dispatchEvent(new Event('change'));
     openModal('sleepModal');
   } else if (type === 'feeding') {
     document.getElementById('feedingEntryId').value = id;
@@ -590,7 +604,10 @@ function groupCardHTML(g) {
       <div class="user-meta">Admin: ${g.admin_username || 'none'} &bull; Created ${new Date(g.created_at).toLocaleDateString()}</div>
     </div>
     <span class="status-badge ${g.status}">${g.status}</span>
-    <div class="user-actions">${actions}</div>
+    <div class="user-actions">
+      ${actions}
+      <button class="btn btn-sm btn-ghost" onclick="loadGroupUsers(${g.id}, '${g.name.replace(/'/g, "\\'")}')">&#128100; Users</button>
+    </div>
   </div>`;
 }
 
@@ -606,6 +623,31 @@ async function rejectGroup(id) {
     await api('POST', `/api/admin/groups/${id}/reject`);
     loadAdminGroups();
   } catch (err) { alert(err.message); }
+}
+
+async function loadGroupUsers(groupId, groupName) {
+  try {
+    const users = await api('GET', `/api/admin/groups/${groupId}/users`);
+    document.getElementById('groupUsersTitle').textContent = `${groupName} — Users`;
+    document.getElementById('groupUsersList').innerHTML = users.length
+      ? users.map(u => `<div class="user-card">
+          <div class="user-info">
+            <div class="user-name">${u.username}</div>
+            <div class="user-email">${u.email}</div>
+            <div class="user-meta">${u.role} &bull; <span class="status-badge ${u.status}">${u.status}</span></div>
+          </div>
+        </div>`).join('')
+      : '<div class="user-actions-empty">No users in this group</div>';
+    document.getElementById('allGroupsSection').classList.add('hidden');
+    document.getElementById('pendingGroupsSection').classList.add('hidden');
+    document.getElementById('groupUsersPanel').classList.remove('hidden');
+  } catch (err) { alert(err.message); }
+}
+
+function closeGroupUsers() {
+  document.getElementById('groupUsersPanel').classList.add('hidden');
+  document.getElementById('allGroupsSection').classList.remove('hidden');
+  document.getElementById('pendingGroupsSection').classList.remove('hidden');
 }
 
 async function loadAdminUsers() {

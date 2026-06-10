@@ -60,6 +60,16 @@ router.put('/groups/:id/status', requireSuperAdmin, (req, res) => {
   }
 });
 
+// GET /api/admin/groups/:id/users - list users in a group (super_admin only)
+router.get('/groups/:id/users', requireSuperAdmin, (req, res) => {
+  try {
+    const users = db.getUsersByGroup(parseInt(req.params.id));
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // POST /api/admin/groups/:id/approve (convenience alias)
 router.post('/groups/:id/approve', requireSuperAdmin, (req, res) => {
   try {

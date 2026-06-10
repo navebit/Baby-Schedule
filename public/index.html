@@ -24,6 +24,12 @@
     </div>
   </nav>
 
+  <!-- Baby Name Header -->
+  <div id="babyNameHeader" class="baby-name-header hidden">
+    <span class="baby-emoji">&#128118;</span>
+    <h1 id="babyNameTitle"></h1>
+  </div>
+
   <!-- Medication Reminder Banner -->
   <div id="reminderBanner" class="reminder-banner hidden"></div>
 
@@ -100,6 +106,14 @@
             <h3>All Groups</h3>
             <div id="allGroups" class="group-list"></div>
           </div>
+          <!-- Inline user list for a selected group -->
+          <div id="groupUsersPanel" class="hidden">
+            <div class="group-users-header">
+              <button class="btn btn-sm btn-ghost" onclick="closeGroupUsers()">&#8592; Back</button>
+              <h3 id="groupUsersTitle">Users</h3>
+            </div>
+            <div id="groupUsersList" class="user-list"></div>
+          </div>
         </div>
 
         <!-- Group-admin: user management panel -->
@@ -144,13 +158,16 @@
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>Start Time</label>
+            <label id="sleepStartLabel">Start Time</label>
             <input type="time" id="sleepStart" required>
           </div>
-          <div class="form-group">
+          <div class="form-group" id="sleepEndGroup">
             <label>End Time <span class="optional">(optional)</span></label>
             <input type="time" id="sleepEnd">
           </div>
+        </div>
+        <div id="morningWakeNote" class="form-hint hidden">
+          Duration will be calculated automatically from the previous night sleep entry.
         </div>
         <div class="form-group">
           <label>Notes <span class="optional">(optional)</span></label>
