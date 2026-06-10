@@ -87,13 +87,38 @@ router.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// GET /api/auth/invite-info/:token — public, returns group info for a valid invite
+router.get('/api/auth/invite-info/:token', (req, res) => {
+  try {
+    const invite = db.getInviteByToken(req.params.token);
+    if (!invite) {
+      return res.json({ valid: false, reason: 'Invite not found' });
+    }
+    if (invite.used) {
+      return res.json({ valid: false, reason: 'Invite already used' });
+    }
+    if (new Date(invite.expires_at) < new Date()) {
+      return res.json({ valid: false, reason: 'Invite has expired' });
+    }
+    const group = db.getGroupById(invite.group_id);
+    if (!group) {
+      return res.json({ valid: false, reason: 'Group not found' });
+    }
+    res.json({ valid: true, groupName: group.name, babyName: group.baby_name });
+  } catch (err) {
+    console.error('Invite-info error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // POST /api/auth/register
 // Creates a new group + group_admin user, both pending approval
+// If inviteToken is provided, joins existing group as an approved caregiver
 router.post('/api/auth/register', async (req, res) => {
   try {
-    const { username, email, password, groupName, babyName } = req.body;
-    if (!username || !email || !password || !groupName || !babyName) {
-      return res.status(400).json({ error: 'Username, email, password, group name, and baby name are required' });
+    const { username, email, password, groupName, babyName, inviteToken } = req.body;
+    if (!username || !email || !password) {
+      return res.status(400).json({ error: 'Username, email, and password are required' });
     }
     if (password.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
@@ -107,6 +132,39 @@ router.post('/api/auth/register', async (req, res) => {
     const existingEmail = db.getUserByEmail(email);
     if (existingEmail) {
       return res.status(409).json({ error: 'Email already registered' });
+    }
+
+    // Invite-based registration
+    if (inviteToken) {
+      const invite = db.getInviteByToken(inviteToken);
+      if (!invite) {
+        return res.status(400).json({ error: 'Invalid invite token' });
+      }
+      if (invite.used) {
+        return res.status(400).json({ error: 'Invite link has already been used' });
+      }
+      if (new Date(invite.expires_at) < new Date()) {
+        return res.status(400).json({ error: 'Invite link has expired' });
+      }
+      const group = db.getGroupById(invite.group_id);
+      if (!group) {
+        return res.status(400).json({ error: 'Group not found' });
+      }
+
+      const hash = await bcrypt.hash(password, 10);
+      // createUser sets status to 'pending' by default; override to 'approved'
+      const result = db.getDb().prepare(
+        "INSERT INTO users (username, email, password_hash, role, status, group_id) VALUES (?, ?, ?, 'caregiver', 'approved', ?)"
+      ).run(username, email, hash, invite.group_id);
+
+      db.markInviteUsed(inviteToken);
+
+      return res.json({ success: true, autoApproved: true });
+    }
+
+    // Normal registration: requires groupName + babyName
+    if (!groupName || !babyName) {
+      return res.status(400).json({ error: 'Username, email, password, group name, and baby name are required' });
     }
 
     // Create the group (pending)

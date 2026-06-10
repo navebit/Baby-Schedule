@@ -262,6 +262,22 @@ router.delete('/users/:id', (req, res) => {
   }
 });
 
+// POST /api/admin/invite — generate invite link for current group
+router.post('/invite', (req, res) => {
+  try {
+    const groupId = req.session.groupId;
+    if (!groupId) {
+      return res.status(400).json({ error: 'No group associated with your account' });
+    }
+    const { token } = db.createInvite(groupId, req.session.userId);
+    const url = `${req.protocol}://${req.get('host')}/register?invite=${token}`;
+    res.json({ token, url });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // POST /api/admin/my-group — super_admin creates their own group
 router.post('/my-group', requireSuperAdmin, (req, res) => {
   try {

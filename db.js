@@ -1,6 +1,7 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const bcrypt = require('bcrypt');
+const crypto = require('crypto');
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'baby_schedule.db');
 
@@ -156,6 +157,19 @@ function initDb() {
       database.prepare(`UPDATE ${table} SET group_id = ? WHERE group_id IS NULL`).run(defaultGroup.id);
     }
   }
+
+  // Create invites table
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS invites (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token TEXT NOT NULL UNIQUE,
+      group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      created_by INTEGER NOT NULL REFERENCES users(id),
+      expires_at TEXT NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
 
   // Migrate existing 'admin' role users to 'group_admin'
   try {
@@ -415,6 +429,25 @@ function deleteMedicationEntry(id, userId, groupId, isPrivileged) {
   return getDb().prepare('DELETE FROM medication_entries WHERE id = ? AND user_id = ? AND group_id = ?').run(id, userId, groupId);
 }
 
+// ===== INVITES =====
+
+function createInvite(groupId, createdBy) {
+  const token = crypto.randomBytes(16).toString('hex');
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
+  getDb().prepare(
+    'INSERT INTO invites (token, group_id, created_by, expires_at) VALUES (?, ?, ?, ?)'
+  ).run(token, groupId, createdBy, expiresAt);
+  return { token, groupId };
+}
+
+function getInviteByToken(token) {
+  return getDb().prepare('SELECT * FROM invites WHERE token = ?').get(token);
+}
+
+function markInviteUsed(token) {
+  return getDb().prepare('UPDATE invites SET used = 1 WHERE token = ?').run(token);
+}
+
 // ===== CALENDAR =====
 
 function getDatesWithEntries(year, month, groupId) {
@@ -487,4 +520,8 @@ module.exports = {
   deleteMedicationEntry,
   getDatesWithEntries,
   getUpcomingMedicationReminders,
+  // Invites
+  createInvite,
+  getInviteByToken,
+  markInviteUsed,
 };

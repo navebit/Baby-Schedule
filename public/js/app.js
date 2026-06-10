@@ -797,5 +797,23 @@ async function deleteUser(id) {
   } catch (err) { alert(err.message); }
 }
 
+// ===== INVITE LINK =====
+
+async function generateInviteLink() {
+  try {
+    const data = await api('POST', '/api/admin/invite');
+    document.getElementById('inviteLinkUrl').value = data.url;
+    document.getElementById('inviteLinkBox').classList.remove('hidden');
+  } catch (err) {
+    alert('Failed to generate invite link: ' + err.message);
+  }
+}
+
+function copyInviteLink() {
+  navigator.clipboard.writeText(document.getElementById('inviteLinkUrl').value)
+    .then(() => alert('Invite link copied to clipboard!'))
+    .catch(() => alert('Could not copy to clipboard'));
+}
+
 // ===== START =====
 document.addEventListener('DOMContentLoaded', init);

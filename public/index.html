@@ -134,6 +134,13 @@
         <!-- Group-admin: user management panel -->
         <div id="groupAdminPanel" class="hidden">
           <h2>User Management</h2>
+          <div id="inviteSection" style="margin-bottom:1.5rem">
+            <button class="btn btn-secondary" onclick="generateInviteLink()">&#128279; Get Invite Link</button>
+            <div id="inviteLinkBox" class="hidden" style="margin-top:.75rem">
+              <input type="text" id="inviteLinkUrl" class="form-input" readonly>
+              <button class="btn btn-sm btn-ghost" onclick="copyInviteLink()">Copy</button>
+            </div>
+          </div>
           <div id="pendingSection">
             <h3>Pending Caregivers</h3>
             <div id="pendingUsers" class="user-list"></div>
