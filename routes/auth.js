@@ -29,20 +29,21 @@ router.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Super-admin: no group required
+    // Super-admin: load group if they have one (so they can also log entries)
     if (user.role === 'super_admin') {
       if (user.status !== 'approved') {
         return res.status(403).json({ error: 'Account not approved' });
       }
+      const superGroup = user.group_id ? db.getGroupById(user.group_id) : null;
       req.session.userId = user.id;
       req.session.username = user.username;
       req.session.userRole = user.role;
       req.session.userStatus = user.status;
-      req.session.groupId = null;
-      req.session.groupInfo = null;
+      req.session.groupId = superGroup ? superGroup.id : null;
+      req.session.groupInfo = superGroup ? { id: superGroup.id, name: superGroup.name, babyName: superGroup.baby_name } : null;
       return res.json({
         success: true,
-        user: { id: user.id, username: user.username, role: user.role, status: user.status, groupId: null },
+        user: { id: user.id, username: user.username, role: user.role, status: user.status, groupId: req.session.groupId, groupInfo: req.session.groupInfo },
       });
     }
 

@@ -169,8 +169,8 @@ function initDb() {
 
   const existing = database.prepare("SELECT id, role FROM users WHERE role = 'super_admin' OR username = ? OR email = ?").get(adminUsername, adminEmail);
   if (existing && existing.role !== 'super_admin') {
-    // Upgrade existing user to super_admin (migration from old single-tenant setup)
-    database.prepare("UPDATE users SET role = 'super_admin', group_id = NULL WHERE id = ?").run(existing.id);
+    // Upgrade existing user to super_admin — keep their group_id so they can still log entries
+    database.prepare("UPDATE users SET role = 'super_admin' WHERE id = ?").run(existing.id);
     console.log(`Upgraded existing user to super_admin`);
   } else if (!existing) {
     const hash = bcrypt.hashSync(adminPassword, 10);
@@ -178,6 +178,16 @@ function initDb() {
       'INSERT INTO users (username, email, password_hash, role, status, group_id) VALUES (?, ?, ?, ?, ?, NULL)'
     ).run(adminUsername, adminEmail, hash, 'super_admin', 'approved');
     console.log(`Super-admin user created: ${adminUsername} / ${adminPassword}`);
+  }
+
+  // Repair: if super_admin has no group_id but a group exists, assign them to the first group
+  const superAdmin = database.prepare("SELECT id, group_id FROM users WHERE role = 'super_admin' LIMIT 1").get();
+  if (superAdmin && !superAdmin.group_id) {
+    const firstGroup = database.prepare("SELECT id FROM groups ORDER BY id LIMIT 1").get();
+    if (firstGroup) {
+      database.prepare("UPDATE users SET group_id = ? WHERE id = ?").run(firstGroup.id, superAdmin.id);
+      console.log(`Restored super_admin group_id to group ${firstGroup.id}`);
+    }
   }
 
   return database;
