@@ -264,6 +264,21 @@ input, select, textarea { font-family: inherit; font-size: 0.95rem; }
 .medication-btn-solid { background: var(--medication); color: #fff; }
 .medication-btn-solid:hover { background: #dc2626; }
 
+/* ===== GROUP LIST (super-admin panel) ===== */
+.group-list { display: flex; flex-direction: column; gap: .5rem; }
+#pendingGroupsSection { margin-bottom: 2rem; }
+#allGroupsSection { margin-bottom: 2rem; }
+
+/* ===== FORM SECTION LABELS (register page) ===== */
+.form-section-label {
+  font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--text-muted); margin: 1.25rem 0 .5rem; border-top: 1px solid var(--border); padding-top: 1rem;
+}
+.form-section-label:first-of-type { border-top: none; margin-top: 0; padding-top: 0; }
+
+/* ===== BABY NAME IN NAV ===== */
+#navBrandName { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ===== RESPONSIVE ===== */
 @media (max-width: 600px) {
   .navbar { padding: 0 .75rem; }

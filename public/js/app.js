@@ -79,7 +79,14 @@ async function init() {
   }
 
   document.getElementById('navUsername').textContent = state.user.username;
-  if (state.user.role === 'admin') {
+
+  // Show baby name in the nav brand if available
+  if (state.user.groupInfo && state.user.groupInfo.babyName) {
+    document.getElementById('navBrandName').textContent = `${state.user.groupInfo.babyName}'s Schedule`;
+  }
+
+  // Show admin tab for group_admin and super_admin
+  if (state.user.role === 'group_admin' || state.user.role === 'super_admin') {
     document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
   }
 
@@ -114,7 +121,7 @@ function switchView(view) {
   document.getElementById(`view-${view}`).classList.remove('hidden');
   document.querySelector(`[data-view="${view}"]`).classList.add('active');
 
-  if (view === 'admin') loadAdminUsers();
+  if (view === 'admin') loadAdminView();
   if (view === 'calendar') renderCalendar();
 }
 
@@ -188,7 +195,7 @@ function renderTimeline() {
 }
 
 function entryHTML(e) {
-  const canEdit = state.user.role === 'admin' || e.user_id === state.user.id;
+  const canEdit = state.user.role === 'super_admin' || state.user.role === 'group_admin' || e.user_id === state.user.id;
   let title = '', meta = '', time = '', reminder = '';
 
   if (e.entryType === 'sleep') {
@@ -537,6 +544,70 @@ async function renderCalendar() {
 }
 
 // ===== ADMIN =====
+function loadAdminView() {
+  if (state.user.role === 'super_admin') {
+    document.getElementById('superAdminPanel').classList.remove('hidden');
+    document.getElementById('groupAdminPanel').classList.add('hidden');
+    loadAdminGroups();
+  } else {
+    document.getElementById('superAdminPanel').classList.add('hidden');
+    document.getElementById('groupAdminPanel').classList.remove('hidden');
+    loadAdminUsers();
+  }
+}
+
+async function loadAdminGroups() {
+  try {
+    const groups = await api('GET', '/api/admin/groups');
+    const pending = groups.filter(g => g.status === 'pending');
+
+    const pendingEl = document.getElementById('pendingGroups');
+    const allEl = document.getElementById('allGroups');
+
+    if (!pending.length) {
+      pendingEl.innerHTML = '<div class="user-actions-empty">No pending group registrations</div>';
+    } else {
+      pendingEl.innerHTML = pending.map(g => groupCardHTML(g)).join('');
+    }
+
+    allEl.innerHTML = groups.map(g => groupCardHTML(g)).join('');
+  } catch (err) {
+    console.error('Failed to load groups', err);
+  }
+}
+
+function groupCardHTML(g) {
+  const actions = g.status === 'pending' ? `
+    <button class="btn btn-sm btn-primary" onclick="approveGroup(${g.id})">Approve</button>
+    <button class="btn btn-sm btn-danger" onclick="rejectGroup(${g.id})">Reject</button>` :
+    g.status === 'approved' ? `<button class="btn btn-sm btn-secondary" onclick="rejectGroup(${g.id})">Revoke</button>` :
+    `<button class="btn btn-sm btn-primary" onclick="approveGroup(${g.id})">Re-approve</button>`;
+
+  return `<div class="user-card">
+    <div class="user-info">
+      <div class="user-name">${g.name}</div>
+      <div class="user-email">Baby: <strong>${g.baby_name}</strong></div>
+      <div class="user-meta">Admin: ${g.admin_username || 'none'} &bull; Created ${new Date(g.created_at).toLocaleDateString()}</div>
+    </div>
+    <span class="status-badge ${g.status}">${g.status}</span>
+    <div class="user-actions">${actions}</div>
+  </div>`;
+}
+
+async function approveGroup(id) {
+  try {
+    await api('POST', `/api/admin/groups/${id}/approve`);
+    loadAdminGroups();
+  } catch (err) { alert(err.message); }
+}
+
+async function rejectGroup(id) {
+  try {
+    await api('POST', `/api/admin/groups/${id}/reject`);
+    loadAdminGroups();
+  } catch (err) { alert(err.message); }
+}
+
 async function loadAdminUsers() {
   try {
     const users = await api('GET', '/api/admin/users');
@@ -569,7 +640,7 @@ function userCardHTML(u, compact) {
     } else if (u.status === 'approved') {
       actions = `
         <button class="btn btn-sm btn-secondary" onclick="setUserStatus(${u.id}, 'rejected')">Revoke</button>
-        ${u.role === 'caregiver' ? `<button class="btn btn-sm btn-secondary" onclick="setUserRole(${u.id}, 'admin')">Make Admin</button>` : `<button class="btn btn-sm btn-secondary" onclick="setUserRole(${u.id}, 'caregiver')">Remove Admin</button>`}
+        ${u.role === 'caregiver' ? `<button class="btn btn-sm btn-secondary" onclick="setUserRole(${u.id}, 'group_admin')">Make Admin</button>` : `<button class="btn btn-sm btn-secondary" onclick="setUserRole(${u.id}, 'caregiver')">Remove Admin</button>`}
         <button class="btn btn-sm btn-danger" onclick="deleteUser(${u.id})">Delete</button>`;
     } else {
       actions = `
