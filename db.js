@@ -167,8 +167,12 @@ function initDb() {
   const adminEmail = process.env.ADMIN_EMAIL || 'admin@babyscheduler.local';
   const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
 
-  const existing = database.prepare("SELECT id FROM users WHERE role = 'super_admin'").get();
-  if (!existing) {
+  const existing = database.prepare("SELECT id, role FROM users WHERE role = 'super_admin' OR username = ? OR email = ?").get(adminUsername, adminEmail);
+  if (existing && existing.role !== 'super_admin') {
+    // Upgrade existing user to super_admin (migration from old single-tenant setup)
+    database.prepare("UPDATE users SET role = 'super_admin', group_id = NULL WHERE id = ?").run(existing.id);
+    console.log(`Upgraded existing user to super_admin`);
+  } else if (!existing) {
     const hash = bcrypt.hashSync(adminPassword, 10);
     database.prepare(
       'INSERT INTO users (username, email, password_hash, role, status, group_id) VALUES (?, ?, ?, ?, ?, NULL)'
