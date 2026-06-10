@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Baby Schedule - Pending Approval</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="auth-page">
+  <div class="auth-container">
+    <div class="auth-card" style="text-align:center">
+      <div class="auth-logo">
+        <span class="logo-icon">&#9203;</span>
+        <h1>Awaiting Approval</h1>
+      </div>
+      <p style="margin-bottom:1.5rem; color:#6b7280;">Your account is pending admin approval. You'll be able to access the app once approved.</p>
+      <button onclick="logout()" class="btn btn-secondary btn-full">Sign Out</button>
+    </div>
+  </div>
+  <script>
+    async function logout() {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      window.location.href = '/login';
+    }
+  </script>
+</body>
+</html>

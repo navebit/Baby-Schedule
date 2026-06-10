@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Baby Schedule - Login</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="auth-page">
+  <div class="auth-container">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <span class="logo-icon">&#128118;</span>
+        <h1>Baby Schedule</h1>
+        <p>Track feeding, sleep, diapers &amp; more</p>
+      </div>
+      <form id="loginForm">
+        <div id="loginError" class="alert alert-error hidden"></div>
+        <div class="form-group">
+          <label for="username">Username</label>
+          <input type="text" id="username" name="username" required autocomplete="username" placeholder="Enter username">
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="Enter password">
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">Sign In</button>
+      </form>
+      <div class="auth-footer">
+        <p>Don't have an account? <a href="/register">Request Access</a></p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById('loginError');
+      errorEl.classList.add('hidden');
+
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          if (data.user.status === 'approved') {
+            window.location.href = '/';
+          } else {
+            window.location.href = '/pending';
+          }
+        } else {
+          errorEl.textContent = data.error || 'Login failed';
+          errorEl.classList.remove('hidden');
+        }
+      } catch (err) {
+        errorEl.textContent = 'Network error. Please try again.';
+        errorEl.classList.remove('hidden');
+      }
+    });
+  </script>
+</body>
+</html>

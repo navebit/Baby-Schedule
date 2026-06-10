@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Baby Schedule</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <!-- Top Navigation -->
+  <nav class="navbar">
+    <div class="nav-brand">
+      <span class="logo-icon">&#128118;</span>
+      <span>Baby Schedule</span>
+    </div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" data-view="today">Today</button>
+      <button class="nav-tab" data-view="calendar">Calendar</button>
+      <button class="nav-tab admin-only hidden" data-view="admin">Admin</button>
+    </div>
+    <div class="nav-user">
+      <span id="navUsername"></span>
+      <button class="btn btn-sm btn-secondary" id="logoutBtn">Sign Out</button>
+    </div>
+  </nav>
+
+  <!-- Medication Reminder Banner -->
+  <div id="reminderBanner" class="reminder-banner hidden"></div>
+
+  <!-- Main Content -->
+  <main class="main-content">
+
+    <!-- TODAY VIEW -->
+    <section id="view-today" class="view active">
+      <div class="date-header">
+        <button class="btn btn-sm btn-ghost" id="prevDay">&#8592;</button>
+        <h2 id="currentDateLabel"></h2>
+        <button class="btn btn-sm btn-ghost" id="nextDay">&#8594;</button>
+        <button class="btn btn-sm btn-secondary" id="todayBtn">Today</button>
+      </div>
+
+      <!-- Quick Add Buttons -->
+      <div class="quick-add-bar">
+        <button class="quick-add-btn sleep-btn" data-modal="sleepModal">
+          <span>&#128164;</span> Sleep
+        </button>
+        <button class="quick-add-btn feeding-btn" data-modal="feedingModal">
+          <span>&#127868;</span> Feeding
+        </button>
+        <button class="quick-add-btn diaper-btn" data-modal="diaperModal">
+          <span>&#128163;</span> Diaper
+        </button>
+        <button class="quick-add-btn medication-btn" data-modal="medicationModal">
+          <span>&#128138;</span> Medication
+        </button>
+      </div>
+
+      <!-- Daily Summary -->
+      <div class="summary-cards" id="summaryCards"></div>
+
+      <!-- Timeline -->
+      <div class="timeline-container">
+        <div class="timeline-header">
+          <h3>Timeline</h3>
+          <div class="timeline-legend">
+            <span class="legend-dot sleep"></span>Sleep
+            <span class="legend-dot feeding"></span>Feeding
+            <span class="legend-dot diaper"></span>Diaper
+            <span class="legend-dot medication"></span>Medication
+          </div>
+        </div>
+        <div id="timeline" class="timeline"></div>
+        <div id="timelineEmpty" class="timeline-empty hidden">No entries for this day yet.</div>
+      </div>
+    </section>
+
+    <!-- CALENDAR VIEW -->
+    <section id="view-calendar" class="view hidden">
+      <div class="calendar-container">
+        <div class="calendar-nav">
+          <button class="btn btn-sm btn-ghost" id="calPrevMonth">&#8592;</button>
+          <h2 id="calMonthLabel"></h2>
+          <button class="btn btn-sm btn-ghost" id="calNextMonth">&#8594;</button>
+        </div>
+        <div class="calendar-grid" id="calendarGrid"></div>
+      </div>
+    </section>
+
+    <!-- ADMIN VIEW -->
+    <section id="view-admin" class="view hidden">
+      <div class="admin-container">
+        <h2>User Management</h2>
+        <div id="pendingSection">
+          <h3>Pending Approval</h3>
+          <div id="pendingUsers" class="user-list"></div>
+        </div>
+        <div id="allUsersSection">
+          <h3>All Users</h3>
+          <div id="allUsers" class="user-list"></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODALS -->
+
+  <!-- Sleep Modal -->
+  <div id="sleepModal" class="modal hidden">
+    <div class="modal-overlay" data-close="sleepModal"></div>
+    <div class="modal-card">
+      <div class="modal-header sleep-header">
+        <h3>&#128164; Log Sleep</h3>
+        <button class="modal-close" data-close="sleepModal">&#10005;</button>
+      </div>
+      <form id="sleepForm" class="modal-body">
+        <input type="hidden" id="sleepEntryId">
+        <div class="form-group">
+          <label>Sleep Type</label>
+          <select id="sleepType" required>
+            <option value="morning_wake">Morning Wake-up</option>
+            <option value="nap1">Nap 1</option>
+            <option value="nap2">Nap 2</option>
+            <option value="nap3">Nap 3</option>
+            <option value="nap4">Nap 4</option>
+            <option value="night_sleep">Night Sleep</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Start Time</label>
+            <input type="time" id="sleepStart" required>
+          </div>
+          <div class="form-group">
+            <label>End Time <span class="optional">(optional)</span></label>
+            <input type="time" id="sleepEnd">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Notes <span class="optional">(optional)</span></label>
+          <textarea id="sleepNotes" rows="2" placeholder="Any observations..."></textarea>
+        </div>
+        <div id="sleepError" class="alert alert-error hidden"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close="sleepModal">Cancel</button>
+          <button type="submit" class="btn sleep-btn-solid">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Feeding Modal -->
+  <div id="feedingModal" class="modal hidden">
+    <div class="modal-overlay" data-close="feedingModal"></div>
+    <div class="modal-card">
+      <div class="modal-header feeding-header">
+        <h3>&#127868; Log Feeding</h3>
+        <button class="modal-close" data-close="feedingModal">&#10005;</button>
+      </div>
+      <form id="feedingForm" class="modal-body">
+        <input type="hidden" id="feedingEntryId">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Amount</label>
+            <input type="number" id="feedingAmount" min="0" step="0.5" required placeholder="e.g. 120">
+          </div>
+          <div class="form-group">
+            <label>Unit</label>
+            <select id="feedingUnit">
+              <option value="ml">ml</option>
+              <option value="oz">oz</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Time</label>
+          <input type="time" id="feedingTime" required>
+        </div>
+        <div class="form-group">
+          <label>Notes <span class="optional">(optional)</span></label>
+          <textarea id="feedingNotes" rows="2" placeholder="Breast milk, formula, solids..."></textarea>
+        </div>
+        <div id="feedingError" class="alert alert-error hidden"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close="feedingModal">Cancel</button>
+          <button type="submit" class="btn feeding-btn-solid">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Diaper Modal -->
+  <div id="diaperModal" class="modal hidden">
+    <div class="modal-overlay" data-close="diaperModal"></div>
+    <div class="modal-card">
+      <div class="modal-header diaper-header">
+        <h3>&#128163; Log Diaper Change</h3>
+        <button class="modal-close" data-close="diaperModal">&#10005;</button>
+      </div>
+      <form id="diaperForm" class="modal-body">
+        <input type="hidden" id="diaperEntryId">
+        <div class="form-group">
+          <label>Type</label>
+          <div class="radio-group">
+            <label class="radio-label"><input type="radio" name="diaperType" value="wet" required> Wet</label>
+            <label class="radio-label"><input type="radio" name="diaperType" value="dirty"> Dirty</label>
+            <label class="radio-label"><input type="radio" name="diaperType" value="both"> Both</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Time</label>
+          <input type="time" id="diaperTime" required>
+        </div>
+        <div class="form-group">
+          <label>Notes <span class="optional">(optional)</span></label>
+          <textarea id="diaperNotes" rows="2" placeholder="Any observations..."></textarea>
+        </div>
+        <div id="diaperError" class="alert alert-error hidden"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close="diaperModal">Cancel</button>
+          <button type="submit" class="btn diaper-btn-solid">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Medication Modal -->
+  <div id="medicationModal" class="modal hidden">
+    <div class="modal-overlay" data-close="medicationModal"></div>
+    <div class="modal-card">
+      <div class="modal-header medication-header">
+        <h3>&#128138; Log Medication</h3>
+        <button class="modal-close" data-close="medicationModal">&#10005;</button>
+      </div>
+      <form id="medicationForm" class="modal-body">
+        <input type="hidden" id="medicationEntryId">
+        <div id="dupWarning" class="alert alert-warning hidden"></div>
+        <div class="form-group">
+          <label>Medication / Vitamin Name</label>
+          <input type="text" id="medicationName" required placeholder="e.g. Vitamin D, Paracetamol">
+        </div>
+        <div class="form-group">
+          <label>Dosage</label>
+          <input type="text" id="medicationDosage" required placeholder="e.g. 0.5ml, 2.5mg">
+        </div>
+        <div class="form-group">
+          <label>Time Administered</label>
+          <input type="time" id="medicationTime" required>
+        </div>
+        <div class="form-group">
+          <label>Next Dose Reminder <span class="optional">(optional)</span></label>
+          <input type="datetime-local" id="medicationNextDose">
+        </div>
+        <div class="form-group">
+          <label>Notes <span class="optional">(optional)</span></label>
+          <textarea id="medicationNotes" rows="2" placeholder="Reason, reaction notes..."></textarea>
+        </div>
+        <div id="medicationError" class="alert alert-error hidden"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close="medicationModal">Cancel</button>
+          <button type="submit" class="btn medication-btn-solid">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Confirm Modal -->
+  <div id="confirmModal" class="modal hidden">
+    <div class="modal-overlay"></div>
+    <div class="modal-card modal-small">
+      <div class="modal-header">
+        <h3>Confirm Delete</h3>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to delete this entry?</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="confirmCancel">Cancel</button>
+        <button class="btn btn-danger" id="confirmDelete">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

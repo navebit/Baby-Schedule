@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Baby Schedule - Register</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="auth-page">
+  <div class="auth-container">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <span class="logo-icon">&#128118;</span>
+        <h1>Request Access</h1>
+        <p>Your registration will be reviewed by an admin</p>
+      </div>
+      <div id="successMsg" class="alert alert-success hidden">
+        Registration submitted! Please wait for admin approval before logging in.
+        <br><br>
+        <a href="/login">Back to Login</a>
+      </div>
+      <form id="registerForm">
+        <div id="registerError" class="alert alert-error hidden"></div>
+        <div class="form-group">
+          <label for="username">Username</label>
+          <input type="text" id="username" name="username" required autocomplete="username" placeholder="Choose a username">
+        </div>
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" required autocomplete="email" placeholder="your@email.com">
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" required autocomplete="new-password" placeholder="At least 6 characters">
+        </div>
+        <div class="form-group">
+          <label for="confirmPassword">Confirm Password</label>
+          <input type="password" id="confirmPassword" name="confirmPassword" required autocomplete="new-password" placeholder="Repeat password">
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">Request Access</button>
+      </form>
+      <div class="auth-footer">
+        <p>Already have an account? <a href="/login">Sign In</a></p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById('registerError');
+      errorEl.classList.add('hidden');
+
+      const username = document.getElementById('username').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const confirmPassword = document.getElementById('confirmPassword').value;
+
+      if (password !== confirmPassword) {
+        errorEl.textContent = 'Passwords do not match';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, email, password }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById('registerForm').classList.add('hidden');
+          document.getElementById('successMsg').classList.remove('hidden');
+        } else {
+          errorEl.textContent = data.error || 'Registration failed';
+          errorEl.classList.remove('hidden');
+        }
+      } catch (err) {
+        errorEl.textContent = 'Network error. Please try again.';
+        errorEl.classList.remove('hidden');
+      }
+    });
+  </script>
+</body>
+</html>
