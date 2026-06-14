@@ -181,19 +181,77 @@ async function loadEntries() {
 
 // ===== SUMMARY =====
 function renderSummary() {
-  const sleep = state.entries.filter(e => e.entryType === 'sleep').length;
+  const sleep = state.entries.filter(e => e.entryType === 'sleep');
   const feeding = state.entries.filter(e => e.entryType === 'feeding');
   const totalFeeding = feeding.reduce((sum, e) => sum + e.amount, 0);
-  const feedingUnit = feeding.length ? feeding[0].unit : 'ml';
-  const diaper = state.entries.filter(e => e.entryType === 'diaper').length;
-  const medication = state.entries.filter(e => e.entryType === 'medication').length;
+  const diaper = state.entries.filter(e => e.entryType === 'diaper');
+  const medication = state.entries.filter(e => e.entryType === 'medication');
 
   document.getElementById('summaryCards').innerHTML = `
-    <div class="summary-card sleep-card"><div class="s-icon">&#128164;</div><div class="s-value">${sleep}</div><div class="s-label">Sleep sessions</div></div>
-    <div class="summary-card feeding-card"><div class="s-icon">&#127868;</div><div class="s-value">${feeding.length ? totalFeeding + feedingUnit : '0'}</div><div class="s-label">Total feeding</div></div>
-    <div class="summary-card diaper-card"><div class="s-icon">&#128163;</div><div class="s-value">${diaper}</div><div class="s-label">Diaper changes</div></div>
-    <div class="summary-card medication-card"><div class="s-icon">&#128138;</div><div class="s-value">${medication}</div><div class="s-label">Medications</div></div>
+    <button class="summary-card sleep-card" onclick="toggleBreakdown('sleep')">
+      <div class="s-icon">&#128164;</div><div class="s-value">${sleep.length}</div><div class="s-label">Sleep sessions</div>
+    </button>
+    <button class="summary-card feeding-card" onclick="toggleBreakdown('feeding')">
+      <div class="s-icon">&#127868;</div><div class="s-value">${feeding.length ? totalFeeding + 'ml' : '0'}</div><div class="s-label">Total feeding</div>
+    </button>
+    <button class="summary-card diaper-card" onclick="toggleBreakdown('diaper')">
+      <div class="s-icon">&#128163;</div><div class="s-value">${diaper.length}</div><div class="s-label">Diaper changes</div>
+    </button>
+    <button class="summary-card medication-card" onclick="toggleBreakdown('medication')">
+      <div class="s-icon">&#128138;</div><div class="s-value">${medication.length}</div><div class="s-label">Medications</div>
+    </button>
   `;
+  // Clear breakdown when entries reload
+  document.getElementById('summaryBreakdown').classList.add('hidden');
+}
+
+let activeBreakdown = null;
+function toggleBreakdown(type) {
+  const panel = document.getElementById('summaryBreakdown');
+  if (activeBreakdown === type && !panel.classList.contains('hidden')) {
+    panel.classList.add('hidden');
+    activeBreakdown = null;
+    return;
+  }
+  activeBreakdown = type;
+  const entries = state.entries.filter(e => e.entryType === type);
+  const colors = { sleep: 'var(--sleep)', feeding: 'var(--feeding)', diaper: 'var(--diaper)', medication: 'var(--medication)' };
+  const color = colors[type];
+
+  let rows = '';
+  if (!entries.length) {
+    rows = '<div class="breakdown-empty">No entries yet</div>';
+  } else if (type === 'sleep') {
+    rows = entries.map(e => {
+      const t = fmt12(e.start_time.slice(11,16) || e.start_time);
+      let detail = '';
+      if (e.end_time) {
+        const dur = calcDuration(e.start_time, e.end_time);
+        detail = `${t} → ${fmt12(e.end_time.slice(11,16) || e.end_time)}${dur ? ' <span class="bd-dur">'+dur+'</span>' : ''}`;
+      } else if (e.type === 'morning_wake' && e.prev_night_sleep_time) {
+        const dur = calcDuration(e.prev_night_sleep_time, e.start_time, true);
+        detail = `${t}${dur ? ' <span class="bd-dur">Slept '+dur+'</span>' : ''}`;
+      } else {
+        detail = t;
+      }
+      return `<div class="breakdown-row"><span class="bd-label">${sleepTypeLabel(e.type)}</span><span class="bd-detail">${detail}</span></div>`;
+    }).join('');
+  } else if (type === 'feeding') {
+    rows = entries.map(e =>
+      `<div class="breakdown-row"><span class="bd-label">${fmt12(e.time.slice(11,16)||e.time)}</span><span class="bd-detail"><strong>${e.amount}ml</strong>${e.notes ? ' · '+e.notes : ''}</span></div>`
+    ).join('');
+  } else if (type === 'diaper') {
+    rows = entries.map(e =>
+      `<div class="breakdown-row"><span class="bd-label">${fmt12(e.time.slice(11,16)||e.time)}</span><span class="bd-detail">${diaperLabel(e.type)}${e.notes ? ' · '+e.notes : ''}</span></div>`
+    ).join('');
+  } else if (type === 'medication') {
+    rows = entries.map(e =>
+      `<div class="breakdown-row"><span class="bd-label">${e.name}</span><span class="bd-detail">${e.dosage} at ${fmt12(e.time_administered.slice(11,16)||e.time_administered)}${e.notes ? ' · '+e.notes : ''}</span></div>`
+    ).join('');
+  }
+
+  panel.innerHTML = `<div class="breakdown-inner" style="border-left:3px solid ${color}">${rows}</div>`;
+  panel.classList.remove('hidden');
 }
 
 // ===== TIMELINE =====

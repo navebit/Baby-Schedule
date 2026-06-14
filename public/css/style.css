@@ -321,3 +321,22 @@ input, select, textarea { font-family: inherit; font-size: 0.95rem; }
 }
 .rename-input { font-size: .9rem; }
 .rename-actions { display: flex; gap: .5rem; }
+
+/* ===== SUMMARY CARD BUTTONS ===== */
+.summary-card { cursor: pointer; border: 2px solid transparent; transition: border-color .15s, transform .1s; background: none; width: 100%; }
+.summary-card:hover { transform: translateY(-2px); }
+.summary-card.sleep-card:hover { border-color: var(--sleep); }
+.summary-card.feeding-card:hover { border-color: var(--feeding); }
+.summary-card.diaper-card:hover { border-color: var(--diaper); }
+.summary-card.medication-card:hover { border-color: var(--medication); }
+
+/* ===== SUMMARY BREAKDOWN PANEL ===== */
+.summary-breakdown { margin-bottom: 1.25rem; animation: fadeIn .15s ease; }
+.breakdown-inner { background: var(--card); border-radius: var(--radius); padding: .75rem 1rem; box-shadow: var(--shadow); }
+.breakdown-row { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; padding: .4rem 0; border-bottom: 1px solid var(--border); }
+.breakdown-row:last-child { border-bottom: none; }
+.bd-label { font-weight: 600; font-size: .9rem; white-space: nowrap; }
+.bd-detail { font-size: .85rem; color: var(--text-muted); text-align: right; }
+.bd-dur { font-weight: 600; color: var(--sleep); margin-left: .4rem; }
+.breakdown-empty { text-align: center; color: var(--text-muted); font-size: .9rem; padding: .5rem 0; }
+@keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
