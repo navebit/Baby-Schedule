@@ -183,7 +183,9 @@ async function loadEntries() {
 function renderSummary() {
   const sleep = state.entries.filter(e => e.entryType === 'sleep');
   const feeding = state.entries.filter(e => e.entryType === 'feeding');
-  const totalFeeding = feeding.reduce((sum, e) => sum + e.amount, 0);
+  const milkFeeding = feeding.filter(e => e.unit !== 'solid');
+  const solidFeeding = feeding.filter(e => e.unit === 'solid');
+  const totalFeeding = milkFeeding.reduce((sum, e) => sum + e.amount, 0);
   const diaper = state.entries.filter(e => e.entryType === 'diaper');
   const medication = state.entries.filter(e => e.entryType === 'medication');
 
@@ -192,7 +194,7 @@ function renderSummary() {
       <div class="s-icon">&#128164;</div><div class="s-value">${sleep.length}</div><div class="s-label">Sleep sessions</div>
     </button>
     <button class="summary-card feeding-card" onclick="toggleBreakdown('feeding')">
-      <div class="s-icon">&#127868;</div><div class="s-value">${feeding.length ? totalFeeding + 'ml' : '0'}</div><div class="s-label">Total feeding</div>
+      <div class="s-icon">&#127868;</div><div class="s-value">${milkFeeding.length ? totalFeeding + 'ml' : '0'}${solidFeeding.length ? ' +' + solidFeeding.length + ' solid' : ''}</div><div class="s-label">Total feeding</div>
     </button>
     <button class="summary-card diaper-card" onclick="toggleBreakdown('diaper')">
       <div class="s-icon">&#128163;</div><div class="s-value">${diaper.length}</div><div class="s-label">Diaper changes</div>
@@ -237,9 +239,13 @@ function toggleBreakdown(type) {
       return `<div class="breakdown-row"><span class="bd-label">${sleepTypeLabel(e.type)}</span><span class="bd-detail">${detail}</span></div>`;
     }).join('');
   } else if (type === 'feeding') {
-    rows = entries.map(e =>
-      `<div class="breakdown-row"><span class="bd-label">${fmt12(e.time.slice(11,16)||e.time)}</span><span class="bd-detail"><strong>${e.amount}ml</strong>${e.notes ? ' · '+e.notes : ''}</span></div>`
-    ).join('');
+    rows = entries.map(e => {
+      const t = fmt12(e.time.slice(11,16)||e.time);
+      const detail = e.unit === 'solid'
+        ? `<strong>Solid</strong>${e.notes ? ' · '+e.notes : ''}`
+        : `<strong>${e.amount}ml</strong>${e.notes ? ' · '+e.notes : ''}`;
+      return `<div class="breakdown-row"><span class="bd-label">${t}</span><span class="bd-detail">${detail}</span></div>`;
+    }).join('');
   } else if (type === 'diaper') {
     rows = entries.map(e =>
       `<div class="breakdown-row"><span class="bd-label">${fmt12(e.time.slice(11,16)||e.time)}</span><span class="bd-detail">${diaperLabel(e.type)}${e.notes ? ' · '+e.notes : ''}</span></div>`
@@ -287,9 +293,11 @@ function entryHTML(e) {
       meta = `Started ${fmt12(e.start_time.slice(11,16) || e.start_time)}`;
     }
   } else if (e.entryType === 'feeding') {
-    title = `${e.amount}${e.unit} feeding`;
+    title = e.unit === 'solid' ? `Solid food` : `${e.amount}${e.unit} feeding`;
     time = fmt12(e.time.slice(11,16) || e.time);
-    meta = `At ${fmt12(e.time.slice(11,16) || e.time)} by ${e.username}`;
+    meta = e.unit === 'solid'
+      ? `${e.notes || ''} · At ${fmt12(e.time.slice(11,16) || e.time)} by ${e.username}`
+      : `At ${fmt12(e.time.slice(11,16) || e.time)} by ${e.username}`;
   } else if (e.entryType === 'diaper') {
     title = `${diaperLabel(e.type)} diaper`;
     time = fmt12(e.time.slice(11,16) || e.time);
@@ -340,9 +348,14 @@ function openModal(id) {
   // Set default time to now
   const timeInputs = document.querySelectorAll(`#${id} input[type="time"]`);
   timeInputs.forEach(inp => { if (!inp.value) inp.value = nowTimeValue(); });
-  // Sync conditional fields (e.g. hide end time for morning_wake)
+  // Sync conditional fields
   if (id === 'sleepModal') {
     document.getElementById('sleepType').dispatchEvent(new Event('change'));
+  }
+  if (id === 'feedingModal') {
+    document.querySelector('input[name="feedingType"][value="milk"]').checked = true;
+    document.getElementById('feedingAmountGroup').classList.remove('hidden');
+    document.getElementById('feedingSolidGroup').classList.add('hidden');
   }
 }
 
@@ -356,9 +369,14 @@ function closeModal(id) {
     form.querySelectorAll('.alert').forEach(a => a.classList.add('hidden'));
   }
   document.getElementById('dupWarning')?.classList.add('hidden');
-  // Re-sync sleep modal fields after reset
+  // Re-sync conditional fields after reset
   if (id === 'sleepModal') {
     document.getElementById('sleepType').dispatchEvent(new Event('change'));
+  }
+  if (id === 'feedingModal') {
+    document.querySelector('input[name="feedingType"][value="milk"]').checked = true;
+    document.getElementById('feedingAmountGroup').classList.remove('hidden');
+    document.getElementById('feedingSolidGroup').classList.add('hidden');
   }
 }
 
@@ -366,6 +384,15 @@ function closeModal(id) {
 function setupForms() {
   document.getElementById('sleepForm').addEventListener('submit', submitSleep);
   document.getElementById('feedingForm').addEventListener('submit', submitFeeding);
+
+  // Toggle milk/solid fields
+  document.querySelectorAll('input[name="feedingType"]').forEach(radio => {
+    radio.addEventListener('change', function () {
+      const isSolid = this.value === 'solid';
+      document.getElementById('feedingAmountGroup').classList.toggle('hidden', isSolid);
+      document.getElementById('feedingSolidGroup').classList.toggle('hidden', !isSolid);
+    });
+  });
   document.getElementById('diaperForm').addEventListener('submit', submitDiaper);
   document.getElementById('medicationForm').addEventListener('submit', submitMedication);
 
@@ -419,11 +446,23 @@ async function submitSleep(e) {
 async function submitFeeding(e) {
   e.preventDefault();
   const id = document.getElementById('feedingEntryId').value;
+  const feedingType = document.querySelector('input[name="feedingType"]:checked').value;
+  const isSolid = feedingType === 'solid';
+  const solidDesc = document.getElementById('feedingSolidDesc').value.trim();
+  const amountVal = document.getElementById('feedingAmount').value;
+  if (!isSolid && !amountVal) {
+    showError('feedingError', 'Amount is required for milk feeding');
+    return;
+  }
+  if (isSolid && !solidDesc) {
+    showError('feedingError', 'Description is required for solid food');
+    return;
+  }
   const body = {
-    amount: parseFloat(document.getElementById('feedingAmount').value),
-    unit: document.getElementById('feedingUnit').value,
+    amount: isSolid ? 0 : parseFloat(amountVal),
+    unit: isSolid ? 'solid' : 'ml',
     time: document.getElementById('feedingTime').value,
-    notes: document.getElementById('feedingNotes').value || null,
+    notes: isSolid ? (solidDesc + (document.getElementById('feedingNotes').value ? ' · ' + document.getElementById('feedingNotes').value : '')) : (document.getElementById('feedingNotes').value || null),
     date: state.currentDate,
   };
   try {
@@ -520,10 +559,19 @@ async function openEditModal(type, id) {
     openModal('sleepModal');
   } else if (type === 'feeding') {
     document.getElementById('feedingEntryId').value = id;
-    document.getElementById('feedingAmount').value = entry.amount;
-    document.getElementById('feedingUnit').value = entry.unit;
+    const isSolid = entry.unit === 'solid';
+    document.querySelector(`input[name="feedingType"][value="${isSolid ? 'solid' : 'milk'}"]`).checked = true;
+    document.getElementById('feedingAmountGroup').classList.toggle('hidden', isSolid);
+    document.getElementById('feedingSolidGroup').classList.toggle('hidden', !isSolid);
+    if (isSolid) {
+      document.getElementById('feedingSolidDesc').value = entry.notes || '';
+      document.getElementById('feedingNotes').value = '';
+    } else {
+      document.getElementById('feedingAmount').value = entry.amount;
+      document.getElementById('feedingNotes').value = entry.notes || '';
+      document.getElementById('feedingSolidDesc').value = '';
+    }
     document.getElementById('feedingTime').value = (entry.time || '').slice(11, 16) || entry.time;
-    document.getElementById('feedingNotes').value = entry.notes || '';
     openModal('feedingModal');
   } else if (type === 'diaper') {
     document.getElementById('diaperEntryId').value = id;
